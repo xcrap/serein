@@ -1,6 +1,10 @@
+import { PRESETS } from "../gl/presets";
+
+// Read off the preset list rather than written out, so it cannot go stale
+// again when presets are added or dropped.
 const BINDINGS: [string, string][] = [
   ["space", "next preset"],
-  ["1 – 6", "choose a preset"],
+  [`1 – ${PRESETS.length}`, "choose a preset"],
   ["c", "next colour world"],
   ["shift c", "previous colour world"],
   ["l", "listen to a tab"],
@@ -8,6 +12,7 @@ const BINDINGS: [string, string][] = [
   ["o", "open an audio file"],
   ["r", "recompose"],
   ["f", "fullscreen"],
+  ["u", "hide the interface"],
   ["h", "close this"],
 ];
 

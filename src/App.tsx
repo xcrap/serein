@@ -34,6 +34,8 @@ export default function App() {
   const [started, setStarted] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [showKeys, setShowKeys] = useState(false);
+  // U hides the interface outright, as distinct from it fading on idle.
+  const [chromeOff, setChromeOff] = useState(false);
   const [source, setSource] = useState<SourceKind>("resting");
   const [track, setTrack] = useState<Track>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -123,9 +125,9 @@ export default function App() {
   }, [seed]);
 
   useEffect(() => {
-    document.body.classList.toggle("is-idle", idle && started && !showKeys);
+    document.body.classList.toggle("is-idle", started && !showKeys && (idle || chromeOff));
     return () => document.body.classList.remove("is-idle");
-  }, [idle, started, showKeys]);
+  }, [chromeOff, idle, started, showKeys]);
 
   /* ------------------------------------------------------------ sources */
 
@@ -221,6 +223,9 @@ export default function App() {
         stepPalette(event.shiftKey ? -1 : 1);
       } else if (key === "h" || key === "?") {
         setShowKeys((current) => !current);
+      } else if (key === "u") {
+        setChromeOff((current) => !current);
+        setShowKeys(false);
       } else if (key === "l") {
         void listenToTab();
       } else if (key === "m") {
@@ -264,7 +269,7 @@ export default function App() {
   /* ------------------------------------------------------------ view */
 
   // The controls stay out of the way until the opening screen has gone.
-  const hidden = !started || (idle && !showKeys);
+  const hidden = !started || chromeOff || (idle && !showKeys);
 
   if (failure) {
     return (
