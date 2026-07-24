@@ -17,16 +17,6 @@
  *     whole mix along the ramp.
  */
 export const ink = `
-vec3 nativeRamp(float t) {
-  vec3 a = vec3(0.010, 0.012, 0.024);
-  vec3 b = vec3(0.080, 0.120, 0.360);
-  vec3 c = vec3(0.780, 0.330, 0.540);
-  vec3 d = vec3(1.000, 0.900, 0.780);
-  if (t < 0.3333) return mix(a, b, t * 3.0);
-  if (t < 0.6666) return mix(b, c, (t - 0.3333) * 3.0);
-  return mix(c, d, (t - 0.6666) * 3.0);
-}
-
 /** Fixed: the pigment must keep its identity from frame to frame. */
 const float PUSH = 1.85;
 

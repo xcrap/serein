@@ -4,16 +4,6 @@
  * strikes it. Held notes glow and hang still; that is what slow music needs.
  */
 export const harp = `
-vec3 nativeRamp(float t) {
-  vec3 a = vec3(0.010, 0.012, 0.020);
-  vec3 b = vec3(0.140, 0.080, 0.280);
-  vec3 c = vec3(0.520, 0.760, 1.000);
-  vec3 d = vec3(1.000, 0.960, 0.900);
-  if (t < 0.3333) return mix(a, b, t * 3.0);
-  if (t < 0.6666) return mix(b, c, (t - 0.3333) * 3.0);
-  return mix(c, d, (t - 0.6666) * 3.0);
-}
-
 vec3 scene(vec2 uv, vec2 st) {
   float t = u_flow;
   vec2 p = uv;

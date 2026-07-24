@@ -15,16 +15,6 @@
  * The spectrum drives size, weight and colour instead.
  */
 export const bloom = `
-vec3 nativeRamp(float t) {
-  vec3 a = vec3(0.018, 0.012, 0.030);
-  vec3 b = vec3(0.300, 0.080, 0.240);
-  vec3 c = vec3(0.980, 0.420, 0.240);
-  vec3 d = vec3(1.000, 0.940, 0.850);
-  if (t < 0.3333) return mix(a, b, t * 3.0);
-  if (t < 0.6666) return mix(b, c, (t - 0.3333) * 3.0);
-  return mix(c, d, (t - 0.6666) * 3.0);
-}
-
 vec3 scene(vec2 uv, vec2 st) {
   float t = u_flow;
 

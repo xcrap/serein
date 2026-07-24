@@ -1,34 +1,10 @@
 /**
  * Veil — geometry and motion are exactly the original. Only the colour is
- * different: it used to be three literal vec3s and a fixed chartreuse, which
- * meant Veil looked identical in every session and no palette could reach it.
- * The three hues now rotate with the seed, so recomposing gives a different
- * trio and each session opens somewhere new — while the drawing is untouched.
+ * different: it used to be three literal vec3s and a fixed chartreuse, so no
+ * palette could reach it and it looked identical in every session. Every tone
+ * now comes through world(), like every other preset.
  */
 export const veil = `
-/** A vivid hue at a position on the wheel. turn is in whole turns. */
-vec3 spectralHue(float turn) {
-  vec3 c = 0.5 + 0.5 * cos(TAU * (turn + vec3(0.0, 0.33, 0.67)));
-  // Normalise to the brightest channel so the ribbons stay saturated rather
-  // than washing out to pastel.
-  return c / max(max(max(c.r, c.g), c.b), 1e-4);
-}
-
-float veilTurn() {
-  return fract(u_seed * 0.137 + 0.08);
-}
-
-vec3 nativeRamp(float t) {
-  float h = veilTurn();
-  vec3 ash = vec3(0.030, 0.020, 0.026);
-  vec3 first = spectralHue(h);
-  vec3 second = spectralHue(h + 0.34);
-  vec3 third = spectralHue(h + 0.66);
-  if (t < 0.34) return mix(ash, first, t * 2.94);
-  if (t < 0.67) return mix(first, second, (t - 0.34) * 3.03);
-  return mix(second, third, (t - 0.67) * 3.03);
-}
-
 vec3 scene(vec2 uvIn, vec2 st) {
   vec2 uv = uvIn * 2.0;
   float t = u_time;
@@ -53,10 +29,13 @@ vec3 scene(vec2 uvIn, vec2 st) {
   // was picked, which is why no palette ever really reached Veil and why it
   // looked identical in every session. On Native these resolve to the
   // seed-rotated hues above; on any other world, to that world's three hues.
-  vec3 ember = world(0.40);
-  vec3 lilac = world(0.66);
-  vec3 ice = world(0.92);
-  vec3 echoTone = world(0.54);
+  // These have to be spread across the ramp. The echo used to sit at 0.54,
+  // between the two ends of the membrane gradient, so it always drew itself
+  // in a colour the membrane was already using — two lines, one colour.
+  vec3 ember = world(0.20);
+  vec3 lilac = world(0.48);
+  vec3 ice = world(0.74);
+  vec3 echoTone = world(1.00);
   vec3 spectral = mix(ember, lilac, smoothstep(-0.8, 0.9, p.x + warp));
 
   vec3 col = vec3(0.022, 0.021, 0.019);

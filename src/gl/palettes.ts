@@ -59,9 +59,6 @@ const vec3 PALETTE_STOPS[${CHROMATIC.length * 4}] = vec3[${CHROMATIC.length * 4}
 ${CHROMATIC.map((p) => "  " + p.stops!.map(toVec3).join(", ")).join(",\n")}
 );
 
-/** Each preset supplies its own ramp; used when the palette is Native. */
-vec3 nativeRamp(float t);
-
 vec3 rampAt(float world, float t) {
   if (world < 0.5) return nativeRamp(t);
   int base = (int(world) - 1) * 4;

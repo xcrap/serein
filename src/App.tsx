@@ -10,8 +10,6 @@ import { Opening } from "./ui/Opening";
 import { Connect } from "./ui/Connect";
 import { completeAuth, disconnect, isConnected, nowPlaying } from "./spotify";
 
-const IDLE_AFTER = 3000;
-
 /** "Artist - Title.flac" is a convention worth honouring. */
 function readFileName(name: string): Track {
   const bare = name.replace(/\.[a-z0-9]+$/i, "").replace(/_/g, " ").trim();
@@ -27,17 +25,17 @@ export default function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const listenerRef = useRef<Listener | null>(null);
   const rendererRef = useRef<Renderer | null>(null);
-  const activityRef = useRef(performance.now());
 
   const [preset, setPreset] = useState(0);
   const [palette, setPalette] = useState(0);
   const [seed, setSeed] = useState(() => 1 + Math.random() * 40);
-  const [idle, setIdle] = useState(false);
   const [started, setStarted] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [showKeys, setShowKeys] = useState(false);
-  // U hides the interface outright, as distinct from it fading on idle.
+  // The interface never hides itself — U hides the controls, T hides what is
+  // playing, and they stay where you put them.
   const [chromeOff, setChromeOff] = useState(false);
+  const [titleOff, setTitleOff] = useState(false);
   const [spotify, setSpotify] = useState(() => isConnected());
   const [showConnect, setShowConnect] = useState(false);
   const [remote, setRemote] = useState<Track>(null);
@@ -59,10 +57,7 @@ export default function App() {
     window.setTimeout(() => setNotice((current) => (current === message ? null : current)), 3000);
   }, []);
 
-  const wake = useCallback(() => {
-    activityRef.current = performance.now();
-    setIdle(false);
-  }, []);
+
 
   /* ------------------------------------------------------------ engine */
 
@@ -101,7 +96,6 @@ export default function App() {
       // Live read-out of what the analyser hears, for checking against real music.
       (window as unknown as { serein: unknown }).serein = { features, source: listener.kind };
 
-      if (now - activityRef.current > IDLE_AFTER) setIdle(true);
       frame = requestAnimationFrame(loop);
     };
     frame = requestAnimationFrame(loop);
@@ -146,9 +140,9 @@ export default function App() {
   }, [seed]);
 
   useEffect(() => {
-    document.body.classList.toggle("is-idle", started && !showKeys && (idle || chromeOff));
+    document.body.classList.toggle("is-idle", started && !showKeys && chromeOff && titleOff);
     return () => document.body.classList.remove("is-idle");
-  }, [chromeOff, idle, started, showKeys]);
+  }, [chromeOff, showKeys, started, titleOff]);
 
   /* ------------------------------------------------------------ spotify */
 
@@ -306,7 +300,6 @@ export default function App() {
     const onKey = (event: KeyboardEvent) => {
       if (event.target instanceof HTMLInputElement) return;
       if (event.metaKey || event.ctrlKey || event.altKey) return;
-      wake();
       const key = event.key.toLowerCase();
 
       if (key === " ") {
@@ -321,6 +314,8 @@ export default function App() {
       } else if (key === "u") {
         setChromeOff((current) => !current);
         setShowKeys(false);
+      } else if (key === "t") {
+        setTitleOff((current) => !current);
       } else if (key === "l") {
         void listenToTab();
       } else if (key === "m") {
@@ -341,10 +336,11 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [begin, listenToMic, listenToTab, started, stepPalette, stepPreset, toggleFullscreen, wake]);
+  }, [begin, listenToMic, listenToTab, started, stepPalette, stepPreset, toggleFullscreen, toggleSpotify]);
 
   useEffect(() => {
-    // The pointer only wakes the interface. It never touches the image.
+    // The pointer never touches the image, and no longer reveals anything —
+    // the interface only moves when you ask it to.
     const onDrop = (event: DragEvent) => {
       event.preventDefault();
       const file = event.dataTransfer?.files?.[0];
@@ -352,22 +348,19 @@ export default function App() {
     };
     const onDragOver = (event: DragEvent) => event.preventDefault();
 
-    window.addEventListener("pointermove", wake);
-    window.addEventListener("pointerdown", wake);
     window.addEventListener("drop", onDrop);
     window.addEventListener("dragover", onDragOver);
     return () => {
-      window.removeEventListener("pointermove", wake);
-      window.removeEventListener("pointerdown", wake);
       window.removeEventListener("drop", onDrop);
       window.removeEventListener("dragover", onDragOver);
     };
-  }, [openFile, wake]);
+  }, [openFile]);
 
   /* ------------------------------------------------------------ view */
 
   // The controls stay out of the way until the opening screen has gone.
-  const hidden = !started || chromeOff || (idle && !showKeys);
+  const hidden = !started || chromeOff;
+  const titleHidden = !started || titleOff;
 
   if (failure) {
     return (
@@ -391,11 +384,13 @@ export default function App() {
 
         <section />
 
-        <footer className={`footer chrome${hidden ? " is-hidden" : ""}`}>
-          <NowPlaying track={remote ?? track} position={meter.position} duration={meter.duration} />
+        <footer className="footer">
+          <div className={`chrome${titleHidden ? " is-hidden" : ""}`}>
+            <NowPlaying track={remote ?? track} position={meter.position} duration={meter.duration} />
+          </div>
 
           {/* Everything you operate sits in the centre of the frame. */}
-          <div className="controls">
+          <div className={`controls chrome${hidden ? " is-hidden" : ""}`}>
             <Presets preset={preset} onPreset={setPreset} />
             <Sources
               source={source}

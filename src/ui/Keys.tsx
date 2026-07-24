@@ -13,7 +13,8 @@ const BINDINGS: [string, string][] = [
   ["s", "spotify — connect or disconnect"],
   ["r", "recompose"],
   ["f", "fullscreen"],
-  ["u", "hide the interface"],
+  ["u", "hide the controls"],
+  ["t", "hide what is playing"],
   ["h", "close this"],
 ];
 

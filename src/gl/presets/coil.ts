@@ -8,16 +8,6 @@
  * itself belongs to the composition, and the seed chooses the composition.
  */
 export const coil = `
-vec3 nativeRamp(float t) {
-  vec3 a = vec3(0.016, 0.012, 0.030);
-  vec3 b = vec3(0.280, 0.080, 0.420);
-  vec3 c = vec3(0.980, 0.340, 0.320);
-  vec3 d = vec3(1.000, 0.900, 0.720);
-  if (t < 0.3333) return mix(a, b, t * 3.0);
-  if (t < 0.6666) return mix(b, c, (t - 0.3333) * 3.0);
-  return mix(c, d, (t - 0.6666) * 3.0);
-}
-
 /** Distance to segment ab — drawing segments, not points, keeps the body whole. */
 float segment(vec2 p, vec2 a, vec2 b) {
   vec2 pa = p - a;

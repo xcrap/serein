@@ -138,6 +138,30 @@ float gauss(float x) {
   return exp(-x * x);
 }
 
+/**
+ * The Native colour world, shared by every preset so that switching preset
+ * does not also switch the palette out from under you. Three hues a third of
+ * the wheel apart, rotated by the seed — so recomposing moves all of them
+ * together and each session opens somewhere new.
+ */
+vec3 spectralHue(float turn) {
+  vec3 c = 0.5 + 0.5 * cos(TAU * (turn + vec3(0.0, 0.33, 0.67)));
+  // Normalise to the brightest channel so the hues stay saturated rather than
+  // washing out to pastel.
+  return c / max(max(max(c.r, c.g), c.b), 1e-4);
+}
+
+vec3 nativeRamp(float t) {
+  float turn = fract(u_seed * 0.137 + 0.08);
+  vec3 shadow = vec3(0.022, 0.018, 0.026);
+  vec3 first = spectralHue(turn);
+  vec3 second = spectralHue(turn + 0.34);
+  vec3 third = spectralHue(turn + 0.66);
+  if (t < 0.3333) return mix(shadow, first, t * 3.0);
+  if (t < 0.6666) return mix(first, second, (t - 0.3333) * 3.0);
+  return mix(second, third, (t - 0.6666) * 3.0);
+}
+
 float line(float d, float width) {
   return 1.0 - smoothstep(width, width + 0.012, abs(d));
 }
