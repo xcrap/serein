@@ -7,6 +7,8 @@ import { Mark, Presets, Sources } from "./ui/Chrome";
 import { Keys } from "./ui/Keys";
 import { NowPlaying, type Track } from "./ui/NowPlaying";
 import { Opening } from "./ui/Opening";
+import { Connect } from "./ui/Connect";
+import { completeAuth, disconnect, isConnected, nowPlaying } from "./spotify";
 
 const IDLE_AFTER = 3000;
 
@@ -36,6 +38,16 @@ export default function App() {
   const [showKeys, setShowKeys] = useState(false);
   // U hides the interface outright, as distinct from it fading on idle.
   const [chromeOff, setChromeOff] = useState(false);
+  const [spotify, setSpotify] = useState(() => isConnected());
+  const [showConnect, setShowConnect] = useState(false);
+  const [remote, setRemote] = useState<Track>(null);
+  // The last good reading from Spotify, plus when it arrived, so the position
+  // can run on locally between polls instead of stepping three seconds at a
+  // time. Kept in a ref: it is read by the meter tick, not rendered.
+  const remoteRef = useRef<
+    { position: number; duration: number; playing: boolean; at: number } | null
+  >(null);
+  const pollFailures = useRef(0);
   const [source, setSource] = useState<SourceKind>("resting");
   const [track, setTrack] = useState<Track>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -95,9 +107,18 @@ export default function App() {
     frame = requestAnimationFrame(loop);
 
     const meterTimer = window.setInterval(() => {
+      // Spotify wins when it is connected and playing, otherwise the local
+      // file does. Two writers racing here is what made the timeline jump.
+      const spotifyClock = remoteRef.current;
+      const elapsed = spotifyClock && spotifyClock.playing
+        ? (performance.now() - spotifyClock.at) / 1000
+        : 0;
+
       setMeter({
-        position: listener.position,
-        duration: listener.duration,
+        position: spotifyClock
+          ? Math.min(spotifyClock.duration, spotifyClock.position + elapsed)
+          : listener.position,
+        duration: spotifyClock ? spotifyClock.duration : listener.duration,
         level: listener.kind === "resting" ? 0 : listener.features.level,
       });
     }, 120);
@@ -128,6 +149,80 @@ export default function App() {
     document.body.classList.toggle("is-idle", started && !showKeys && (idle || chromeOff));
     return () => document.body.classList.remove("is-idle");
   }, [chromeOff, idle, started, showKeys]);
+
+  /* ------------------------------------------------------------ spotify */
+
+  useEffect(() => {
+    const code = new URLSearchParams(window.location.search).get("code");
+    if (!code) return;
+    void completeAuth(code).then((ok) => {
+      // Drop the code out of the address bar either way.
+      window.history.replaceState({}, "", window.location.origin + "/");
+      setSpotify(ok);
+      say(ok ? "spotify connected" : "spotify could not connect");
+    });
+  }, [say]);
+
+  useEffect(() => {
+    if (!spotify) {
+      setRemote(null);
+      return;
+    }
+    let alive = true;
+    const poll = async () => {
+      const result = await nowPlaying();
+      if (!alive) return;
+
+      if (!result.ok) {
+        // A dropped or throttled request is not "nothing is playing". Hold the
+        // last title rather than blinking it out; give up after three in a row.
+        if (++pollFailures.current >= 3) {
+          remoteRef.current = null;
+          setRemote(null);
+        }
+        return;
+      }
+
+      pollFailures.current = 0;
+      const track = result.track;
+      if (!track) {
+        remoteRef.current = null;
+        setRemote(null);
+        return;
+      }
+
+      remoteRef.current = {
+        position: track.position,
+        duration: track.duration,
+        playing: track.playing,
+        at: performance.now(),
+      };
+      setRemote((current) =>
+        current && current.title === track.title && current.artist === track.artist
+          ? current
+          : { title: track.title, artist: track.artist },
+      );
+    };
+    void poll();
+    const timer = window.setInterval(() => void poll(), 3000);
+    return () => {
+      alive = false;
+      remoteRef.current = null;
+      pollFailures.current = 0;
+      window.clearInterval(timer);
+    };
+  }, [spotify]);
+
+  const toggleSpotify = useCallback(() => {
+    if (isConnected()) {
+      disconnect();
+      setSpotify(false);
+      setRemote(null);
+      say("spotify disconnected");
+      return;
+    }
+    setShowConnect(true);
+  }, [say]);
 
   /* ------------------------------------------------------------ sources */
 
@@ -232,12 +327,15 @@ export default function App() {
         void listenToMic();
       } else if (key === "o") {
         fileInputRef.current?.click();
+      } else if (key === "s") {
+        toggleSpotify();
       } else if (key === "r") {
         setSeed(1 + Math.random() * 40);
       } else if (key === "f") {
         toggleFullscreen();
       } else if (key === "escape") {
         setShowKeys(false);
+        setShowConnect(false);
         if (!started) begin();
       }
     };
@@ -294,16 +392,18 @@ export default function App() {
         <section />
 
         <footer className={`footer chrome${hidden ? " is-hidden" : ""}`}>
-          <NowPlaying track={track} position={meter.position} duration={meter.duration} />
+          <NowPlaying track={remote ?? track} position={meter.position} duration={meter.duration} />
 
           {/* Everything you operate sits in the centre of the frame. */}
           <div className="controls">
             <Presets preset={preset} onPreset={setPreset} />
             <Sources
               source={source}
+              spotify={spotify}
               onTab={() => void listenToTab()}
               onMic={() => void listenToMic()}
               onFile={() => fileInputRef.current?.click()}
+              onSpotify={toggleSpotify}
             />
           </div>
 
@@ -313,6 +413,7 @@ export default function App() {
 
       {notice && <div className="notice">{notice}</div>}
       {showKeys && <Keys onClose={() => setShowKeys(false)} />}
+      {showConnect && <Connect onClose={() => setShowConnect(false)} />}
 
       {!started && (
         <Opening

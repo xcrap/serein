@@ -68,14 +68,18 @@ export function Palette({ palette, onPalette }: { palette: number; onPalette: (i
 
 export function Sources({
   source,
+  spotify,
   onTab,
   onMic,
   onFile,
+  onSpotify,
 }: {
   source: SourceKind;
+  spotify: boolean;
   onTab: () => void;
   onMic: () => void;
   onFile: () => void;
+  onSpotify: () => void;
 }) {
   // The active source is simply the white one — saying "live" beside it reads
   // as one more thing to choose.
@@ -84,6 +88,8 @@ export function Sources({
       <button className={source === "tab" ? "is-live" : ""} onClick={onTab}>Tab</button>
       <button className={source === "mic" ? "is-live" : ""} onClick={onMic}>Room</button>
       <button className={source === "file" ? "is-live" : ""} onClick={onFile}>File</button>
+      {/* Not a source of sound — a source of the title. */}
+      <button className={spotify ? "is-live" : ""} onClick={onSpotify}>Spotify</button>
     </div>
   );
 }

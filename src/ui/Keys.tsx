@@ -10,6 +10,7 @@ const BINDINGS: [string, string][] = [
   ["l", "listen to a tab"],
   ["m", "listen to the room"],
   ["o", "open an audio file"],
+  ["s", "spotify — connect or disconnect"],
   ["r", "recompose"],
   ["f", "fullscreen"],
   ["u", "hide the interface"],

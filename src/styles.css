@@ -485,3 +485,124 @@ button.now__title:hover {
     align-items: flex-start;
   }
 }
+
+/* --------------------------------------------------------------- sheet */
+
+.sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  padding: var(--pad);
+  background: rgba(5, 5, 6, 0.74);
+  backdrop-filter: blur(14px);
+  animation: fade 400ms var(--ease) both;
+}
+
+.sheet__panel {
+  width: min(440px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding: 30px;
+  border: 1px solid rgba(var(--ink), 0.12);
+  border-radius: 16px;
+  background: rgba(9, 9, 12, 0.9);
+  animation: rise 600ms var(--ease) both;
+}
+
+.sheet__title {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(var(--ink), 0.42);
+}
+
+.sheet__steps {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: rgba(var(--ink), 0.72);
+}
+
+.sheet__steps::marker,
+.sheet__steps li::marker {
+  color: rgba(var(--ink), 0.3);
+}
+
+.sheet__mono {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: rgba(var(--ink), 0.9);
+}
+
+.sheet__uri {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  margin-top: 8px;
+  padding: 9px 12px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: rgba(var(--ink), 0.9);
+  border: 1px solid rgba(var(--ink), 0.12);
+  border-radius: 8px;
+  background: rgba(var(--ink), 0.04);
+  transition: border-color 200ms var(--ease);
+}
+
+.sheet__uri:hover {
+  border-color: rgba(var(--ink), 0.3);
+}
+
+.sheet__copied {
+  font-size: 9.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(var(--ink), 0.4);
+}
+
+.sheet__form {
+  display: flex;
+  gap: 10px;
+}
+
+.sheet__input {
+  flex: 1;
+  padding: 11px 13px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: rgb(var(--ink));
+  border: 1px solid rgba(var(--ink), 0.14);
+  border-radius: 8px;
+  background: rgba(var(--ink), 0.04);
+}
+
+.sheet__input:focus {
+  border-color: rgba(var(--ink), 0.34);
+}
+
+.sheet__go {
+  padding: 11px 20px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgb(8, 8, 10);
+  background: rgba(var(--ink), 0.9);
+  border-radius: 8px;
+  transition: opacity 200ms var(--ease);
+}
+
+.sheet__go:disabled {
+  opacity: 0.28;
+  cursor: default;
+}
