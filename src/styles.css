@@ -1,0 +1,546 @@
+@import "@fontsource-variable/inter/wght.css";
+@import "@fontsource-variable/jetbrains-mono/wght.css";
+
+:root {
+  /* One grotesk for everything. No serif anywhere. */
+  --ui: "Inter Variable", -apple-system, "Helvetica Neue", sans-serif;
+  --mono: "JetBrains Mono Variable", "SF Mono", ui-monospace, monospace;
+
+  --ink: 248, 246, 242;
+  --edge: rgba(248, 246, 242, 0.1);
+
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --pad: clamp(22px, 3.4vw, 52px);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: #050506;
+  color: rgb(var(--ink));
+  font-family: var(--ui);
+  font-weight: 450;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body.is-idle {
+  cursor: none;
+}
+
+canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+input {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  outline: none;
+}
+
+/* --------------------------------------------------------------- type */
+
+/* One interactive type style for the whole interface. */
+.label {
+  font-family: var(--ui);
+  font-weight: 500;
+  font-size: 13px;
+  line-height: 1.45;
+  letter-spacing: 0.002em;
+  color: rgba(var(--ink), 0.62);
+  transition: color 260ms var(--ease);
+  white-space: nowrap;
+  text-shadow: 0 1px 14px rgba(0, 0, 0, 0.9), 0 0 3px rgba(0, 0, 0, 0.8);
+}
+
+button.label:hover,
+.label--bright {
+  color: rgb(var(--ink));
+}
+
+/* The small caption that names a control. */
+.caption {
+  font-family: var(--ui);
+  font-weight: 500;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(var(--ink), 0.34);
+  text-shadow: 0 1px 14px rgba(0, 0, 0, 0.9);
+  white-space: nowrap;
+}
+
+.wordmark {
+  font-family: var(--ui);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.24em;
+  line-height: 1;
+  text-indent: 0.24em;
+}
+
+/* --------------------------------------------------------------- shell */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  padding: var(--pad);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.chrome {
+  transition: opacity 1000ms var(--ease), filter 1000ms var(--ease);
+}
+
+.chrome.is-hidden {
+  opacity: 0;
+  filter: blur(3px);
+  pointer-events: none;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+/* The small tracked mono used for every label in the frame. */
+.meta {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 400;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: rgba(var(--ink), 0.5);
+  white-space: nowrap;
+  text-shadow: 0 1px 16px rgba(0, 0, 0, 0.95);
+}
+
+.meta--dim {
+  color: rgba(var(--ink), 0.3);
+}
+
+.mark {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.mark__word {
+  font-family: var(--ui);
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: 0.26em;
+  text-indent: 0.26em;
+  text-transform: uppercase;
+  line-height: 1;
+  color: rgba(var(--ink), 0.9);
+  text-shadow: 0 1px 16px rgba(0, 0, 0, 0.95);
+}
+
+.mark__rule {
+  width: 26px;
+  height: 1px;
+  background: var(--edge);
+}
+
+.mark__note {
+  opacity: 0;
+  transition: opacity 700ms var(--ease);
+}
+
+.mark__note.is-visible {
+  opacity: 1;
+}
+
+.footer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: end;
+  gap: clamp(16px, 4vw, 64px);
+}
+
+/* --------------------------------------------------------------- now playing */
+
+.now {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 46ch;
+  pointer-events: auto;
+}
+
+.now__title {
+  font-family: var(--ui);
+  font-weight: 600;
+  font-size: clamp(1.15rem, 1.7vw, 1.55rem);
+  line-height: 1.15;
+  letter-spacing: -0.014em;
+  color: rgba(var(--ink), 0.92);
+  text-shadow: 0 0 40px rgba(0, 0, 0, 0.65);
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+  transition: color 500ms var(--ease);
+}
+
+button.now__title:hover {
+  color: rgb(var(--ink));
+}
+
+.now__title--empty {
+  font-family: var(--ui);
+  font-weight: 500;
+  font-size: 13px;
+  color: rgba(var(--ink), 0.45);
+}
+
+.now__line {
+  position: relative;
+  width: min(240px, 26vw);
+  height: 1px;
+  background: var(--edge);
+  overflow: hidden;
+  margin-top: 4px;
+}
+
+.now__line span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: rgba(var(--ink), 0.55);
+  transition: width 400ms linear;
+}
+
+/* --------------------------------------------------------------- opening */
+
+.opening {
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  padding: var(--pad);
+  background: radial-gradient(120% 90% at 50% 50%, rgba(5, 5, 6, 0.15) 0%, rgba(5, 5, 6, 0.86) 72%);
+  transition: opacity 1400ms var(--ease);
+}
+
+.opening.is-leaving {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.opening__inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(26px, 4vh, 44px);
+  animation: rise 1800ms var(--ease) both;
+}
+
+/* Presence from scale and letterspacing rather than from weight — heavy type
+   at this size reads as a logo, wide type reads as a title. */
+.opening__title {
+  font-family: var(--ui);
+  font-size: clamp(3.2rem, 10vw, 8.5rem);
+  font-weight: 150;
+  letter-spacing: 0.42em;
+  text-indent: 0.34em;
+  color: rgb(var(--ink));
+  text-shadow: 0 4px 70px rgba(0, 0, 0, 0.92), 0 0 26px rgba(0, 0, 0, 0.75);
+}
+
+.opening__actions {
+  display: flex;
+  align-items: center;
+  gap: clamp(20px, 3vw, 40px);
+}
+
+/* These sit over the picture, so they carry their own dark ground rather than
+   relying on whatever happens to be behind them. */
+.opening__actions .label {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  text-indent: 0.2em;
+  color: rgba(var(--ink), 0.85);
+  padding: 12px 24px;
+  border: 1px solid rgba(var(--ink), 0.16);
+  border-radius: 100px;
+  background: rgba(6, 6, 9, 0.62);
+  backdrop-filter: blur(12px);
+  pointer-events: auto;
+  transition: color 260ms var(--ease), border-color 260ms var(--ease), background 260ms var(--ease);
+}
+
+.opening__actions .label:hover {
+  color: rgb(var(--ink));
+  border-color: rgba(var(--ink), 0.4);
+  background: rgba(10, 10, 14, 0.82);
+}
+
+.opening__actions .label:hover {
+  color: rgb(var(--ink));
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+    filter: blur(7px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    filter: blur(0);
+  }
+}
+
+/* --------------------------------------------------------------- notice */
+
+/*
+ * Centred with `translate`, not `transform` — the entrance animation owns
+ * `transform`, and having both fight over it is what threw this off-centre.
+ */
+.notice {
+  position: fixed;
+  left: 50%;
+  translate: -50% 0;
+  bottom: calc(var(--pad) + 74px);
+  font-family: var(--ui);
+  font-weight: 500;
+  font-size: 13px;
+  letter-spacing: 0.002em;
+  color: rgba(var(--ink), 0.88);
+  text-shadow: 0 0 30px rgba(0, 0, 0, 0.85), 0 0 8px rgba(0, 0, 0, 0.7);
+  z-index: 4;
+  pointer-events: none;
+  white-space: nowrap;
+  animation: rise 800ms var(--ease) both;
+}
+
+/* --------------------------------------------------------------- keys */
+
+.keys {
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  padding: var(--pad);
+  background: rgba(5, 5, 6, 0.72);
+  backdrop-filter: blur(14px);
+  animation: fade 500ms var(--ease) both;
+}
+
+.keys__panel {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 14px clamp(22px, 3vw, 44px);
+  align-items: baseline;
+  animation: rise 700ms var(--ease) both;
+}
+
+.keys__panel dt {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(var(--ink), 0.9);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.keys__panel dd {
+  font-family: var(--ui);
+  font-weight: 450;
+  font-size: 14px;
+  color: rgba(var(--ink), 0.72);
+}
+
+.keys__title {
+  grid-column: 1 / -1;
+  font-family: var(--ui);
+  font-weight: 600;
+  font-size: 10px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(var(--ink), 0.35);
+  margin-bottom: 10px;
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 760px) {
+  .footer {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 22px;
+  }
+  .settings {
+    align-items: flex-start;
+  }
+}
+
+/* A dot that brightens with the incoming level: proof that sound is arriving. */
+.meter {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  margin-right: 8px;
+  vertical-align: 1px;
+  transition: opacity 120ms linear;
+}
+
+/* --------------------------------------------------------------- controls */
+
+.presets {
+  display: flex;
+  align-items: center;
+  gap: clamp(20px, 2.8vw, 42px);
+  pointer-events: auto;
+}
+
+.presets button {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: rgba(var(--ink), 0.3);
+  padding: 4px 0;
+  transition: color 300ms var(--ease);
+  text-shadow: 0 1px 16px rgba(0, 0, 0, 0.95);
+}
+
+.presets button:hover {
+  color: rgba(var(--ink), 0.68);
+}
+
+.presets button.is-active {
+  color: rgba(var(--ink), 0.97);
+}
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  pointer-events: auto;
+}
+
+.palette {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.palette button {
+  width: 7px;
+  height: 7px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(var(--ink), 0.26);
+  transition: transform 420ms var(--ease), border-color 420ms var(--ease);
+}
+
+.palette button:hover {
+  transform: scale(1.2);
+}
+
+.palette button.is-active {
+  border-color: transparent;
+  transform: scale(1.45);
+}
+
+.source {
+  display: flex;
+  align-items: center;
+  gap: clamp(18px, 2.2vw, 32px);
+}
+
+.source button {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: rgba(var(--ink), 0.36);
+  transition: color 300ms var(--ease);
+  white-space: nowrap;
+  text-shadow: 0 1px 16px rgba(0, 0, 0, 0.95);
+}
+
+.source button:hover {
+  color: rgba(var(--ink), 0.88);
+}
+
+.source button.is-live {
+  color: rgba(var(--ink), 0.95);
+}
+
+.keys-hint {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 3px 14px;
+  text-align: right;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.16em;
+  color: rgba(var(--ink), 0.22);
+  text-shadow: 0 1px 16px rgba(0, 0, 0, 0.95);
+}
+
+.keys-hint b {
+  font-weight: 500;
+  color: rgba(var(--ink), 0.42);
+}
+
+@media (max-width: 860px) {
+  .footer {
+    grid-template-columns: 1fr;
+    gap: 22px;
+  }
+  .controls {
+    align-items: flex-start;
+  }
+}
