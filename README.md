@@ -1,11 +1,18 @@
 # Serein
 
 A listening instrument. Give it a browser tab that is playing music and it
-answers in light — six full-screen presets driven by what the music is actually
+answers in light — five full-screen presets driven by what the music is actually
 doing, not by a level meter.
 
-Everything runs locally. No account, no network calls, no audio leaves the
-machine.
+## Serein in Motion
+
+<p align="center">
+  <img src="assets/serein-in-motion.webp" alt="Serein turning music into light" width="720">
+</p>
+
+Audio analysis and rendering happen locally, and no audio leaves the machine.
+Spotify integration is optional and only calls Spotify's API for track
+metadata.
 
 ## Run it
 
@@ -23,6 +30,8 @@ bun run dev      # http://127.0.0.1:5173
 - **Room** — the microphone, for a record player or a live room.
 - **File** — drop an audio file anywhere on the window, or press `O`.
   `Artist - Title.flac` is parsed into artist and title.
+- **Spotify** — optionally connect for the current title, artist and timeline.
+  Spotify supplies metadata; Tab, Room or File still supplies the sound.
 
 With nothing connected the field keeps breathing on a slow synthetic signal.
 
@@ -33,30 +42,30 @@ Press `H` in the app for the full list.
 | | |
 |---|---|
 | `space` | next preset |
-| `1`–`6` | choose a preset |
+| `1`–`5` | choose a preset |
 | `c` / `shift c` | next / previous colour world |
-| `w` | words on / off (off by default) |
-| `f` | focus — hide everything but the image |
-| `r` | recompose (new seed) |
 | `l` / `m` / `o` | tab / room / file |
-| `enter` | fullscreen |
-| `h` | keys |
+| `s` | connect or disconnect Spotify |
+| `r` | recompose (new seed) |
+| `f` | fullscreen |
+| `u` | hide the controls |
+| `t` | hide what is playing |
+| `h` / `?` | keys |
 
 ## The presets
 
 | | |
 |---|---|
-| **Veil** | a membrane held between low and high — the original, untouched |
-| **Sand** | a Chladni plate — six partials, and the figure *is* the harmony |
-| **Bloom** | ink into water, one ring every two beats, four alive at a time |
-| **Coil** | one long body, the spectrum laid along its length |
+| **Veil** | a membrane held between low and high |
+| **Bloom** | ink released into water, one ring every two beats |
+| **Coil** | one long body, the spectrum along its length |
 | **Ink** | pigment lit from inside, pushed by the low end |
-| **Harp** | sixteen strings; a string is lit while it sounds, and moves only when struck |
+| **Harp** | sixteen strings, struck and left to ring |
 
-Twelve colour worlds sit on top, and they cross-dissolve rather than cut:
-**Native** (each preset's own palette), then Ash, Porcelain, Sable, Ember,
-Rust, Glacier, Nocturne, Iris, Peony, Bruise, Verdigris, Absinthe. Each ramp is
-internally harmonic; the set runs from near-monochrome to fully chromatic.
+Thirteen colour worlds sit on top, and they cross-dissolve rather than cut:
+**Native** (each preset's own palette), then Ember, Glacier, Nocturne, Iris,
+Cinder, Peony, Verdigris, Absinthe, Tide, Copper, Bruise and Aurora. Each ramp
+is internally harmonic; the set runs from near-monochrome to fully chromatic.
 They live in one table in `src/gl/palettes.ts`, which also generates the
 shader's `world()`.
 
@@ -86,7 +95,7 @@ src/
   gl/shared.ts          GLSL prelude, colour worlds, post chain
   gl/renderer.ts        program cache, crossfades, adaptive resolution
   gl/presets/*.ts       one fragment-shader body each
-  poetry/               the optional written layer
+  spotify.ts            optional Spotify metadata via PKCE
   ui/                   overlay, controls, now playing
 ```
 
@@ -108,6 +117,3 @@ Four things worth knowing before editing shaders:
   display, and the renderer lowers resolution on its own if frames run long.
   These shaders are fill-rate bound; on a 5K panel the unbudgeted frame is 15
   million pixels.
-
-The previous version of this project is parked in `_old/` and nothing imports
-it — delete it whenever.
