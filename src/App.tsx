@@ -465,8 +465,12 @@ export default function App() {
       } else if (key === "arrowright") {
         event.preventDefault();
         void skipSpotifyTrack("next");
-      } else if (key >= "1" && key <= String(PRESETS.length)) {
-        setPreset(Number(key) - 1);
+      } else if (key >= "0" && key <= "9") {
+        // 1–9 then 0 for the tenth. Comparing the key against
+        // String(PRESETS.length) only worked while there were fewer than ten:
+        // "5" <= "10" is false, so every digit but 1 stopped working.
+        const index = key === "0" ? 9 : Number(key) - 1;
+        if (index < PRESETS.length) setPreset(index);
       } else if (key === "c") {
         stepPalette(event.shiftKey ? -1 : 1);
       } else if (key === "h" || key === "?") {

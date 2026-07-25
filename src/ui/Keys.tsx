@@ -6,7 +6,7 @@ const BINDINGS: [string, string][] = [
   ["space", "spotify — play or pause"],
   ["n", "next preset"],
   ["← / →", "spotify — previous or next track"],
-  [`1 – ${PRESETS.length}`, "choose a preset"],
+  [PRESETS.length > 9 ? "1 – 9, 0" : `1 – ${PRESETS.length}`, "choose a preset"],
   ["c", "next colour world"],
   ["shift c", "previous colour world"],
   ["l", "listen to a tab"],

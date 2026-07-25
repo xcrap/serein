@@ -15,6 +15,18 @@ import { PALETTE_GLSL } from "./palettes";
  *     sustained instruments; only brightness should follow transients.
  *   · use spow(), never pow(). pow(0.0, k) is NaN on real drivers, and one
  *     NaN turns the whole pixel black.
+ *   · nothing that rises and falls may touch geometry. An audio figure — level,
+ *     swell, centroid — applied to a position, a direction, a scale or a camera
+ *     angle slides the picture one way and slides it back, and that reads as
+ *     bouncing rather than flowing however small it is. The same goes for any
+ *     sin(u_flow) transform. Move things with monotonic quantities only, and
+ *     let the music change weight, colour and light instead.
+ *   · u_beatTime is a tempo *estimate*, not a clock. On real music it ranges
+ *     over an octave and drops its lock; its rate has been measured swinging
+ *     ninefold inside a second. Use it only for things reborn each beat, never
+ *     for continuous motion — for that use u_flow, and for hits use the onset
+ *     envelopes u_kick, u_snare and u_hat, which are measurements rather than
+ *     inferences.
  */
 
 export const VERTEX_SHADER = `#version 300 es
@@ -179,6 +191,37 @@ float specSlow(float x) {
 /** Magnitude at a musical frequency in Hz (the texture spans 28 Hz to 16 kHz). */
 float specHz(float hz) {
   return spec(log(clamp(hz, 28.0, 16000.0) / 28.0) / log(16000.0 / 28.0));
+}
+
+/**
+ * specSlow, spread across neighbouring bins.
+ *
+ * Use this instead of spec()/specSlow() whenever frequency is mapped to a
+ * *place* in the picture — height, distance, angle. Neighbouring pixels then
+ * read neighbouring bins, and a raw bin jumps frame to frame, so every peak in
+ * the spectrum lands as a hard ridge four or five pixels wide. It looks exactly
+ * like a rendering glitch and it is very hard to attribute once it is there.
+ */
+float specSpread(float x) {
+  return (specSlow(x - 0.070) + specSlow(x - 0.035) + specSlow(x)
+        + specSlow(x + 0.035) + specSlow(x + 0.070)) * 0.2;
+}
+
+/**
+ * How hard the music is leaning in, 0 .. 1, and near zero most of the time.
+ *
+ * u_dynamics is short-term loudness against the piece's own slow average, so it
+ * settles back once a loud passage becomes the new normal — that is what makes
+ * this "the moments with power in them" rather than "loud music looks
+ * different". Note the edges: measured on real material u_dynamics only spans
+ * about 0.44 to 0.60. It is a ratio, not a 0..1 meter, and reading it as one
+ * leaves anything built on it switched off permanently.
+ *
+ * Use it for weight — thickness, density, burn — not for position.
+ */
+float power() {
+  return clamp(smoothstep(0.505, 0.605, u_dynamics) * 0.50
+             + smoothstep(0.480, 0.920, u_level) * 0.50, 0.0, 1.0);
 }
 
 /** Past spectra. age 0 is the current frame, 1 is 256 frames ago. */

@@ -1,8 +1,8 @@
 # Serein
 
 A listening instrument. Give it a browser tab that is playing music and it
-answers in light — five full-screen presets driven by what the music is actually
-doing, not by a level meter.
+answers in light — seven full-screen presets driven by what the music is
+actually doing, not by a level meter.
 
 ## Serein in Motion
 
@@ -46,7 +46,7 @@ Press `H` in the app for the full list.
 | `space` | Spotify play / pause |
 | `n` | next preset |
 | `←` / `→` | previous / next Spotify track |
-| `1`–`5` | choose a preset |
+| `1`–`7` | choose a preset |
 | `c` / `shift c` | next / previous colour world |
 | `l` / `m` / `o` | tab / room / file |
 | `s` | connect or disconnect Spotify |
@@ -65,6 +65,8 @@ Press `H` in the app for the full list.
 | **Coil** | one long body, the spectrum along its length |
 | **Ink** | pigment lit from inside, pushed by the low end |
 | **Harp** | sixteen strings, struck and left to ring |
+| **Fathom** | sunlight bent through the surface onto the seabed |
+| **Quicksilver** | liquid metal standing up into the shape of the note |
 
 Thirteen colour worlds sit on top, and they cross-dissolve rather than cut:
 **Native** (each preset's own palette), then Ember, Glacier, Nocturne, Iris,
@@ -107,7 +109,8 @@ Each preset implements `vec3 scene(vec2 uv, vec2 st)` plus its own
 `nativeRamp`, and is wrapped with the shared uniforms and post chain. Adding one
 means writing a file and adding a line to `gl/presets/index.ts`.
 
-Four things worth knowing before editing shaders:
+Things worth knowing before editing shaders. Most of these were learned the
+expensive way, by shipping a preset that felt wrong and having to find out why:
 
 - Animate on `u_flow`, never `u_time`. `u_flow` is a clock that runs at the
   speed of the music, so a slow record does not get a busy picture. `u_time` is
@@ -115,8 +118,40 @@ Four things worth knowing before editing shaders:
 - Take geometry from `specSlow()` and light from `spec()`. Shape should follow
   sustained instruments; only brightness should follow transients. Getting this
   backwards is what makes a preset feel nervous.
+- **Nothing that rises and falls may touch geometry.** An audio figure — level,
+  swell, centroid — applied to a position, a direction, a scale or a camera
+  angle slides the picture one way and slides it back again, and that reads as
+  bouncing rather than flowing however small it is. The same goes for any
+  `sin(u_flow)` transform, which is a rigid swing by construction. Move things
+  with monotonic quantities only, and let the music change weight, colour and
+  light instead. Fathom lost its "nervous" feel the moment its sun direction
+  and seabed depth stopped being driven by the analyser.
+- **`u_beatTime` is a tempo estimate, not a clock.** Measured live on tab audio
+  it reported 49, 48, 0, 51, 180, 175 and 156 BPM inside eight seconds, and its
+  rate swung ninefold between consecutive half-seconds. Use it only for things
+  reborn each beat, where a jump is invisible. For continuous motion use
+  `u_flow`; for anything that must land on a hit use the onset envelopes
+  `u_kick`, `u_snare`, `u_hat`, which are measurements rather than inferences.
+  A metronomic test track locks the estimator perfectly, so this is invisible
+  offline and only shows on real music.
+- **Use `specSpread()` wherever frequency maps to a place in the image** —
+  height, distance, angle. Neighbouring pixels then read neighbouring bins, and
+  a raw bin jumps frame to frame, so every peak lands as a hard ridge four or
+  five pixels wide. It looks exactly like a rendering glitch.
+- **A standing wave never travels.** `cos(k·x)` with a pulsing amplitude sits
+  still and throbs. For water, sum travelling waves with dispersion —
+  `omega = sqrt(g k)`, so long waves outrun short ones — and let the music move
+  the amplitudes, never the wavenumbers. Scaling a wave field slides every point
+  in proportion to its distance from the origin.
+- `power()` gives weight in the moments the music leans in, and near zero the
+  rest of the time. Note its edges: `u_dynamics` is a ratio against a slow
+  average and only spans about 0.44 to 0.60 on real material, so reading it as
+  a 0..1 meter leaves anything built on it switched off permanently.
 - Use `spow(x, k)`, never `pow`. `pow(0.0, k)` returns NaN on real drivers, and
   one NaN turns the whole pixel black.
+- Antialias anything with high gain. Fringes and fine lattices need to be faded
+  toward their own average where they would fall finer than a pixel, or they
+  tear into what looks like corruption.
 - The frame is sized by a pixel budget (`Renderer.maxPixels`), not by the
   display, and the renderer lowers resolution on its own if frames run long.
   These shaders are fill-rate bound; on a 5K panel the unbudgeted frame is 15
