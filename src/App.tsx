@@ -158,12 +158,35 @@ export default function App() {
   useEffect(() => {
     const code = new URLSearchParams(window.location.search).get("code");
     if (!code) return;
+
+    // Consume the one-use code before starting the request. React Strict Mode
+    // runs effects twice in development; leaving it in the URL until the
+    // request finished made the second run exchange the same code again and
+    // report a false failure after the first exchange had already succeeded.
+    window.history.replaceState({}, "", window.location.origin + "/");
     void completeAuth(code).then((ok) => {
-      // Drop the code out of the address bar either way.
-      window.history.replaceState({}, "", window.location.origin + "/");
+      if (window.opener && window.opener !== window) {
+        window.opener.postMessage({ type: "serein:spotify-auth", ok }, window.location.origin);
+        window.close();
+        return;
+      }
       setSpotify(ok);
       say(ok ? "spotify connected" : "spotify could not connect");
     });
+  }, [say]);
+
+  useEffect(() => {
+    const receiveAuth = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type !== "serein:spotify-auth") return;
+
+      const ok = Boolean(event.data.ok);
+      setSpotify(ok);
+      setShowConnect(false);
+      say(ok ? "spotify connected — audio kept playing" : "spotify could not connect");
+    };
+    window.addEventListener("message", receiveAuth);
+    return () => window.removeEventListener("message", receiveAuth);
   }, [say]);
 
   useEffect(() => {
@@ -252,6 +275,9 @@ export default function App() {
       say("connect spotify to use playback keys");
       return false;
     }
+    // A successful token is the source of truth. This also repairs the UI
+    // state if an older double-run callback incorrectly marked it disconnected.
+    setSpotify(true);
     if (!hasPlaybackControl()) {
       say("reconnect spotify once to enable playback keys");
       return false;
@@ -316,10 +342,31 @@ export default function App() {
       }
 
       say(command === "previous" ? "previous spotify track" : "next spotify track");
-      const fresh = await nowPlaying();
-      if (fresh.ok) applySpotifyTrack(fresh.track);
+      const previous = remote;
+      const delays = [250, 500, 1000];
+      const refreshTitle = (attempt: number) => {
+        window.setTimeout(() => {
+          void nowPlaying().then((fresh) => {
+            const unchanged =
+              previous &&
+              fresh.ok &&
+              fresh.track &&
+              fresh.track.title === previous.title &&
+              fresh.track.artist === previous.artist;
+
+            // Spotify can briefly return the old item (or no item) while its
+            // active device changes track. Retry before updating the widget.
+            if (attempt < delays.length - 1 && (!fresh.ok || !fresh.track || unchanged)) {
+              refreshTitle(attempt + 1);
+              return;
+            }
+            if (fresh.ok) applySpotifyTrack(fresh.track);
+          });
+        }, delays[attempt]);
+      };
+      refreshTitle(0);
     },
-    [applySpotifyTrack, canControlSpotify, explainPlaybackFailure, say],
+    [applySpotifyTrack, canControlSpotify, explainPlaybackFailure, remote, say],
   );
 
   /* ------------------------------------------------------------ sources */

@@ -71,8 +71,14 @@ function base64url(buffer: ArrayBuffer) {
 
 /** Send the browser to Spotify to ask permission. */
 export async function beginAuth(id: string) {
+  // Keep Serein itself alive so an existing getDisplayMedia audio stream is
+  // not destroyed by the OAuth round-trip. Opening synchronously also keeps
+  // the popup within the form submission's user gesture.
+  const popup = window.open("", "serein-spotify-auth", "popup,width=520,height=760");
   const verifier = randomString(64);
-  const challenge = base64url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)));
+  const challenge = base64url(
+    await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)),
+  );
 
   localStorage.setItem(KEY.clientId, id.trim());
   localStorage.setItem(KEY.verifier, verifier);
@@ -85,7 +91,9 @@ export async function beginAuth(id: string) {
     code_challenge_method: "S256",
     code_challenge: challenge,
   });
-  window.location.href = `${AUTHORIZE}?${params}`;
+  const url = `${AUTHORIZE}?${params}`;
+  if (popup) popup.location.href = url;
+  else window.location.href = url;
 }
 
 /** Called on load when Spotify has sent us back with a code. */
