@@ -9,7 +9,8 @@
 const AUTHORIZE = "https://accounts.spotify.com/authorize";
 const TOKEN = "https://accounts.spotify.com/api/token";
 const PLAYER = "https://api.spotify.com/v1/me/player";
-const SCOPE = "user-read-playback-state user-read-currently-playing";
+const CONTROL_SCOPE = "user-modify-playback-state";
+const SCOPE = `user-read-playback-state user-read-currently-playing ${CONTROL_SCOPE}`;
 
 const KEY = {
   clientId: "serein.spotify.clientId",
@@ -17,6 +18,7 @@ const KEY = {
   access: "serein.spotify.access",
   refresh: "serein.spotify.refresh",
   expires: "serein.spotify.expires",
+  scope: "serein.spotify.scope",
 };
 
 export type SpotifyTrack = {
@@ -44,8 +46,12 @@ export function isConnected() {
   return Boolean(localStorage.getItem(KEY.refresh) && clientId());
 }
 
+export function hasPlaybackControl() {
+  return (localStorage.getItem(KEY.scope) ?? "").split(/\s+/).includes(CONTROL_SCOPE);
+}
+
 export function disconnect() {
-  for (const key of [KEY.access, KEY.refresh, KEY.expires, KEY.verifier]) {
+  for (const key of [KEY.access, KEY.refresh, KEY.expires, KEY.scope, KEY.verifier]) {
     localStorage.removeItem(key);
   }
 }
@@ -102,15 +108,26 @@ export async function completeAuth(code: string): Promise<boolean> {
   if (!response.ok) return false;
 
   const body = await response.json();
-  store(body);
+  // OAuth permits the token response to omit `scope` when it granted exactly
+  // what was requested, so remember the request as the initial fallback.
+  store(body, SCOPE);
   localStorage.removeItem(KEY.verifier);
   return true;
 }
 
-function store(body: { access_token: string; expires_in: number; refresh_token?: string }) {
+function store(
+  body: {
+    access_token: string;
+    expires_in: number;
+    refresh_token?: string;
+    scope?: string;
+  },
+  scopeFallback?: string,
+) {
   localStorage.setItem(KEY.access, body.access_token);
   localStorage.setItem(KEY.expires, String(Date.now() + body.expires_in * 1000 - 30_000));
   if (body.refresh_token) localStorage.setItem(KEY.refresh, body.refresh_token);
+  if (body.scope ?? scopeFallback) localStorage.setItem(KEY.scope, body.scope ?? scopeFallback ?? "");
 }
 
 async function refresh(): Promise<string | null> {
@@ -137,6 +154,27 @@ async function token(): Promise<string | null> {
   const expires = Number(localStorage.getItem(KEY.expires) ?? 0);
   if (access && Date.now() < expires) return access;
   return refresh();
+}
+
+export type PlaybackCommand = "play" | "pause" | "next" | "previous";
+export type PlaybackResult =
+  | { ok: true }
+  | { ok: false; status: number };
+
+/** Ask Spotify's active player to change transport state. Never throws. */
+export async function controlPlayback(command: PlaybackCommand): Promise<PlaybackResult> {
+  try {
+    const access = await token();
+    if (!access) return { ok: false, status: 401 };
+
+    const response = await fetch(`${PLAYER}/${command}`, {
+      method: command === "play" || command === "pause" ? "PUT" : "POST",
+      headers: { Authorization: `Bearer ${access}` },
+    });
+    return response.ok ? { ok: true } : { ok: false, status: response.status };
+  } catch {
+    return { ok: false, status: 0 };
+  }
 }
 
 /**

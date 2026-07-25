@@ -30,8 +30,10 @@ bun run dev      # http://127.0.0.1:5173
 - **Room** — the microphone, for a record player or a live room.
 - **File** — drop an audio file anywhere on the window, or press `O`.
   `Artist - Title.flac` is parsed into artist and title.
-- **Spotify** — optionally connect for the current title, artist and timeline.
-  Spotify supplies metadata; Tab, Room or File still supplies the sound.
+- **Spotify** — optionally connect for the current title, artist, timeline and
+  playback controls. Spotify supplies metadata and transport; Tab, Room or File
+  still supplies the sound. Playback controls require Spotify Premium. Existing
+  connections need to disconnect and reconnect once to grant control permission.
 
 With nothing connected the field keeps breathing on a slow synthetic signal.
 
@@ -41,7 +43,9 @@ Press `H` in the app for the full list.
 
 | | |
 |---|---|
-| `space` | next preset |
+| `space` | Spotify play / pause |
+| `n` | next preset |
+| `←` / `→` | previous / next Spotify track |
 | `1`–`5` | choose a preset |
 | `c` / `shift c` | next / previous colour world |
 | `l` / `m` / `o` | tab / room / file |

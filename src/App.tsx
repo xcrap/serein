@@ -8,7 +8,16 @@ import { Keys } from "./ui/Keys";
 import { NowPlaying, type Track } from "./ui/NowPlaying";
 import { Opening } from "./ui/Opening";
 import { Connect } from "./ui/Connect";
-import { completeAuth, disconnect, isConnected, nowPlaying } from "./spotify";
+import {
+  completeAuth,
+  controlPlayback,
+  disconnect,
+  hasPlaybackControl,
+  isConnected,
+  nowPlaying,
+  type PlaybackCommand,
+  type SpotifyTrack,
+} from "./spotify";
 
 /** "Artist - Title.flac" is a convention worth honouring. */
 function readFileName(name: string): Track {
@@ -218,6 +227,101 @@ export default function App() {
     setShowConnect(true);
   }, [say]);
 
+  const applySpotifyTrack = useCallback((next: SpotifyTrack | null) => {
+    if (!next) {
+      remoteRef.current = null;
+      setRemote(null);
+      return;
+    }
+
+    remoteRef.current = {
+      position: next.position,
+      duration: next.duration,
+      playing: next.playing,
+      at: performance.now(),
+    };
+    setRemote((current) =>
+      current && current.title === next.title && current.artist === next.artist
+        ? current
+        : { title: next.title, artist: next.artist },
+    );
+  }, []);
+
+  const canControlSpotify = useCallback(() => {
+    if (!isConnected()) {
+      say("connect spotify to use playback keys");
+      return false;
+    }
+    if (!hasPlaybackControl()) {
+      say("reconnect spotify once to enable playback keys");
+      return false;
+    }
+    return true;
+  }, [say]);
+
+  const explainPlaybackFailure = useCallback(
+    (status: number) => {
+      if (status === 401) say("reconnect spotify to use playback keys");
+      else if (status === 403) say("spotify playback control needs premium");
+      else if (status === 404) say("open spotify on a device first");
+      else say("spotify could not change playback");
+    },
+    [say],
+  );
+
+  const toggleSpotifyPlayback = useCallback(async () => {
+    if (!canControlSpotify()) return;
+
+    let clock = remoteRef.current;
+    if (!clock) {
+      const result = await nowPlaying();
+      if (!result.ok) {
+        say("spotify could not read the player");
+        return;
+      }
+      if (!result.track) {
+        say("open spotify on a device first");
+        return;
+      }
+      applySpotifyTrack(result.track);
+      clock = remoteRef.current;
+    }
+    if (!clock) return;
+
+    const command: PlaybackCommand = clock.playing ? "pause" : "play";
+    const result = await controlPlayback(command);
+    if (!result.ok) {
+      explainPlaybackFailure(result.status);
+      return;
+    }
+
+    const elapsed = clock.playing ? (performance.now() - clock.at) / 1000 : 0;
+    remoteRef.current = {
+      ...clock,
+      position: Math.min(clock.duration, clock.position + elapsed),
+      playing: !clock.playing,
+      at: performance.now(),
+    };
+    say(command === "pause" ? "spotify paused" : "spotify playing");
+  }, [applySpotifyTrack, canControlSpotify, explainPlaybackFailure, say]);
+
+  const skipSpotifyTrack = useCallback(
+    async (command: "previous" | "next") => {
+      if (!canControlSpotify()) return;
+
+      const result = await controlPlayback(command);
+      if (!result.ok) {
+        explainPlaybackFailure(result.status);
+        return;
+      }
+
+      say(command === "previous" ? "previous spotify track" : "next spotify track");
+      const fresh = await nowPlaying();
+      if (fresh.ok) applySpotifyTrack(fresh.track);
+    },
+    [applySpotifyTrack, canControlSpotify, explainPlaybackFailure, say],
+  );
+
   /* ------------------------------------------------------------ sources */
 
   const begin = useCallback(() => {
@@ -301,10 +405,19 @@ export default function App() {
       if (event.target instanceof HTMLInputElement) return;
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       const key = event.key.toLowerCase();
+      if (event.repeat && [" ", "arrowleft", "arrowright"].includes(key)) return;
 
       if (key === " ") {
         event.preventDefault();
+        void toggleSpotifyPlayback();
+      } else if (key === "n") {
         stepPreset(1);
+      } else if (key === "arrowleft") {
+        event.preventDefault();
+        void skipSpotifyTrack("previous");
+      } else if (key === "arrowright") {
+        event.preventDefault();
+        void skipSpotifyTrack("next");
       } else if (key >= "1" && key <= String(PRESETS.length)) {
         setPreset(Number(key) - 1);
       } else if (key === "c") {
@@ -336,7 +449,18 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [begin, listenToMic, listenToTab, started, stepPalette, stepPreset, toggleFullscreen, toggleSpotify]);
+  }, [
+    begin,
+    listenToMic,
+    listenToTab,
+    skipSpotifyTrack,
+    started,
+    stepPalette,
+    stepPreset,
+    toggleFullscreen,
+    toggleSpotify,
+    toggleSpotifyPlayback,
+  ]);
 
   useEffect(() => {
     // The pointer never touches the image, and no longer reveals anything —
