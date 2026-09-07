@@ -1,158 +1,166 @@
-# Serein
+# Serein for macOS
 
-A listening instrument. Give it a browser tab that is playing music and it
-answers in light — seven full-screen presets driven by what the music is
-actually doing, not by a level meter.
+A listening instrument, now built in **SwiftUI and Metal**. Give it music and it
+answers in light: seven effects, thirteen colour worlds, and a musical clock that
+follows the sound. Audio analysis stays on your Mac.
 
-## Serein in Motion
+The native app uses AVAudioEngine, ScreenCaptureKit, Accelerate FFTs, and Metal.
+It has no WebView, Electron, JavaScript runtime, or third-party dependencies.
 
-<p align="center">
-  <img src="assets/serein-in-motion.webp" alt="Serein turning music into light" width="720">
-</p>
+## Build and open
 
-Audio analysis and rendering happen locally, and no audio leaves the machine.
-Spotify integration is optional and only calls Spotify's API for track
-metadata.
+Requires **macOS 14 or later**, a Metal-capable Mac, and Xcode 15 or later
+(or matching command-line tools).
 
-## Run it
-
-```bash
-bun install
-bun run dev      # http://127.0.0.1:5173
+```sh
+./scripts/build-macos.sh --open
 ```
 
-`bun run build` type-checks and produces a static bundle in `dist/`.
+The script builds a release executable, assembles `dist/Serein.app`, includes
+its Metal shaders, and signs the app with an existing Apple Development
+certificate (falling back to Developer ID). You can override the certificate
+with `SEREIN_SIGN_IDENTITY`. Ad-hoc signing is deliberately rejected: its
+executable-hash identity invalidates macOS capture permissions after a rebuild.
+The certificate gives successive builds the same designated requirement. You can
+move the app to Applications; it does not depend on the source checkout at
+runtime. Notarization for distribution is not included.
 
-## Giving it sound
+Open `Package.swift` in Xcode to edit the app, or use `swift build` and `swift test`.
+Use the packaged `.app` for audio/Spotify permissions: its Info.plist supplies
+the app identity and usage descriptions.
 
-- **Tab** — pick a browser tab in Chrome's picker and keep *Also share tab
-  audio* switched on. The tab keeps playing through your speakers.
-- **Room** — the microphone, for a record player or a live room.
-- **File** — drop an audio file anywhere on the window, or press `O`.
-  `Artist - Title.flac` is parsed into artist and title.
-- **Spotify** — optionally connect for the current title, artist, timeline and
-  playback controls. Spotify supplies metadata and transport; Tab, Room or File
-  still supplies the sound. Playback controls require Spotify Premium. Existing
-  connections need to disconnect and reconnect once to grant control permission.
+## Sync with Spotify
 
-With nothing connected the field keeps breathing on a slow synthetic signal.
+Play music in Spotify, then click **System audio** (or press `L`). The sound
+coming from your Mac drives the effects directly. A Spotify connection is not
+required for audio sync; it only adds track information and playback controls.
+The native app does not use or request access to your microphone.
 
-## Keys
+## Give it sound
 
-Press `H` in the app for the full list.
+- **System audio** listens to other apps through ScreenCaptureKit. Play music in
+  Spotify, Music, or a browser. macOS requests Screen & System Audio Recording
+  permission. Serein analyzes only audio buffers; it does not save screen frames
+  or audio, and its own playback is excluded.
+- **File** opens a native audio picker. You can also drop a file onto the window
+  or open it with Serein in Finder. Formats supported by AVAudioFile play through
+  speakers with a timeline, pause/resume, and replay. `Artist - Title` file names
+  supply the now-playing label.
+- **Stop Listening**, in the more menu, returns to a slow synthetic field. No permission
+  is requested at launch.
+- **Spotify**, in the bottom controls, optionally reads the running Spotify desktop
+  app's title, artist, and playback state through local Apple Events. It also
+  supports play/pause and previous/next track. Allow the Automation prompt, then
+  choose **System audio** separately to visualize Spotify's audio. No client ID or
+  OAuth setup is required by the native app.
 
-| | |
-|---|---|
-| `space` | Spotify play / pause |
-| `n` | next preset |
-| `←` / `→` | previous / next Spotify track |
-| `1`–`7` | choose a preset |
-| `c` / `shift c` | next / previous colour world |
-| `l` / `m` / `o` | tab / room / file |
-| `s` | connect or disconnect Spotify |
-| `r` | recompose (new seed) |
-| `f` | fullscreen |
-| `u` | hide the controls |
-| `t` | hide what is playing |
-| `h` / `?` | keys |
+If permission is denied, the app returns to Rest and explains where to enable
+access. Permission names vary by macOS release. Protected audio may be unavailable
+to system capture. Live system capture and Spotify require your OS
+permissions and external sources; tests do not grant those permissions.
 
-## The presets
+## The interface
 
-| | |
-|---|---|
-| **Veil** | a membrane held between low and high |
-| **Bloom** | ink released into water, one ring every two beats |
-| **Coil** | one long body, the spectrum along its length |
-| **Ink** | pigment lit from inside, pushed by the low end |
-| **Harp** | sixteen strings, struck and left to ring |
-| **Fathom** | sunlight bent through the surface onto the seabed |
-| **Quicksilver** | liquid metal standing up into the shape of the note |
+The native interface follows the original Serein design: an expansive opening
+wordmark, the original bundled Inter and JetBrains Mono fonts, an unobstructed
+canvas, and quiet text-only controls. The current effect appears beneath the
+small mark at the top. Track information appears only for a real track. Colour
+worlds and tuning are available from the upper-right controls. At smaller window
+widths, effect navigation wraps into two balanced rows. `U` hides the controls
+and `T` independently hides the track information.
 
-Thirteen colour worlds sit on top, and they cross-dissolve rather than cut:
-**Native** (each preset's own palette), then Ember, Glacier, Nocturne, Iris,
-Cinder, Peony, Verdigris, Absinthe, Tide, Copper, Bruise and Aurora. Each ramp
-is internally harmonic; the set runs from near-monochrome to fully chromatic.
-They live in one table in `src/gl/palettes.ts`, which also generates the
-shader's `world()`.
+## The original seven effects
 
-## How it listens
+The original seven effects are ported from GLSL into Metal, retaining their
+geometry, audio mappings, tone mapping, grain, and transitions.
 
-`src/audio/listener.ts` turns the signal into a small set of expressive numbers
-and nothing downstream touches the audio directly:
+| Effect | What it listens to |
+| --- | --- |
+| Veil | A membrane held between low and high |
+| Bloom | Ink released into water, one ring every two beats |
+| Coil | One long body, the spectrum along its length |
+| Ink | Pigment lit from inside, pushed by the low end |
+| Harp | Sixteen strings, struck and left to ring |
+| Fathom | Sunlight bent through the surface onto the seabed |
+| Quicksilver | Liquid metal standing up into the shape of the note |
 
-- Seven auto-gained bands, so a quiet lo-fi tab and a loud master both fill the
-  same range within a few seconds.
-- Separate onset envelopes for kick, snare and hats, each with adaptive
-  thresholds — fast attack, musical decay.
-- Tempo by autocorrelation of the onset envelope, resampled to a steady 60 Hz,
-  giving a BPM estimate and an unwrapped beat counter. Bloom releases exactly
-  one ring every two beats off that counter.
-- Spectral centroid (brightness) and flatness (tonal vs noisy).
-- Short-term against long-term loudness, for swells and drops.
-- Two spectra, not one: a fast one that hears transients, and a slow one that
-  hears sustained instruments.
-- A **motion rate** from tempo and loudness, which drives the `u_flow` clock.
+All thirteen colour worlds remain: Native, Ember, Glacier, Nocturne, Iris,
+Cinder, Peony, Verdigris, Absinthe, Tide, Copper, Bruise, and Aurora. Effects and
+palettes dissolve over 1.6 seconds. The selected effect and palette persist
+between launches.
 
-## Structure
+The tuning popover controls motion, response, grain, and resolution. Set motion
+to zero for a still composition whose light continues to follow the sound.
+macOS Reduce Motion starts motion at zero. Rendering is capped at 1.8 million
+pixels and adapts resolution to the frame budget on Retina displays. Hidden
+and minimized windows skip rendering.
 
+## Keyboard
+
+| Key | Action |
+| --- | --- |
+| `1`–`7` | Select an effect |
+| `N` | Next effect |
+| `C` / `Shift C` | Next / previous colour world |
+| `L` / `O` | System audio / file |
+| `⌘O` | Native audio file picker |
+| `Space` | Play / pause a file or connected Spotify |
+| `S` | Connect / disconnect Spotify desktop |
+| `←` / `→` | Previous / next Spotify track |
+| `R` | Recompose with a new seed |
+| `F` | Full screen |
+| `U` / `T` | Toggle controls / now playing |
+| `H` / `?` | Keyboard help |
+
+Bare shortcuts are scoped to the instrument window, leaving file pickers and
+text fields their normal behavior. Actions also have native menus or accessible
+controls.
+
+## Source map
+
+```text
+Package.swift                         Xcode / Swift Package Manager entry point
+native/Info.plist                     App identity and privacy descriptions
+native/Sources/Serein/
+  SereinApp.swift                     Window and macOS menus
+  InstrumentView.swift                SwiftUI controls, palettes, file drop
+  KeyboardInput.swift                 Canvas-scoped musical shortcuts
+  Instrument.swift                    Effect catalogue and settings
+  AudioController.swift               System capture and file playback
+  AudioAnalysis.swift                 FFT, bands, onsets, tempo, fast/slow spectra
+  SpotifyController.swift             Optional Spotify desktop integration
+  MetalRenderer.swift                 GPU rendering, transitions, pixel budget
+  Resources/Effects.metal             Standalone Metal shader library
+native/Tests/                         Audio and GPU regression tests
+scripts/build-macos.sh                Build and package a standalone app
+scripts/port-metal.py                 Refresh the Metal port from GLSL
 ```
-src/
-  audio/listener.ts     capture, feature extraction, tempo
-  gl/shared.ts          GLSL prelude, colour worlds, post chain
-  gl/renderer.ts        program cache, crossfades, adaptive resolution
-  gl/presets/*.ts       one fragment-shader body each
-  spotify.ts            optional Spotify metadata via PKCE
-  ui/                   overlay, controls, now playing
+
+Three independent GPU upload slots prevent the CPU from mutating textures an
+in-flight frame is reading. The analyzer accumulates callbacks into 4,096-sample
+FFT windows with 50% overlap and publishes complete snapshots with separate fast
+and sustained spectra.
+
+`swift test` checks silence, known tones at 44.1/48/96 kHz, stereo downmix, file
+decoding, native pause/resume/replay, ScreenCaptureKit audio-buffer conversion,
+a 120 BPM pulse train, and all seven effects on a real Metal GPU under
+silence, resting, and active audio. GPU checks reject nonfinite and black output
+and require distinct frames from each effect. Save review PNGs with:
+
+```sh
+SEREIN_RENDER_DIR=/tmp/serein-renders swift test
 ```
 
-Each preset implements `vec3 scene(vec2 uv, vec2 st)` plus its own
-`nativeRamp`, and is wrapped with the shared uniforms and post chain. Adding one
-means writing a file and adding a line to `gl/presets/index.ts`.
+## Browser reference
 
-Things worth knowing before editing shaders. Most of these were learned the
-expensive way, by shipping a preset that felt wrong and having to find out why:
+The original React/WebGL version remains in `src/` and can still run with
+`bun install && bun run dev`. Its documentation and detailed shader design rules
+are in [docs/browser-reference.md](docs/browser-reference.md). Refresh the port explicitly with:
 
-- Animate on `u_flow`, never `u_time`. `u_flow` is a clock that runs at the
-  speed of the music, so a slow record does not get a busy picture. `u_time` is
-  only for things that must not slow down, like film grain.
-- Take geometry from `specSlow()` and light from `spec()`. Shape should follow
-  sustained instruments; only brightness should follow transients. Getting this
-  backwards is what makes a preset feel nervous.
-- **Nothing that rises and falls may touch geometry.** An audio figure — level,
-  swell, centroid — applied to a position, a direction, a scale or a camera
-  angle slides the picture one way and slides it back again, and that reads as
-  bouncing rather than flowing however small it is. The same goes for any
-  `sin(u_flow)` transform, which is a rigid swing by construction. Move things
-  with monotonic quantities only, and let the music change weight, colour and
-  light instead. Fathom lost its "nervous" feel the moment its sun direction
-  and seabed depth stopped being driven by the analyser.
-- **`u_beatTime` is a tempo estimate, not a clock.** Measured live on tab audio
-  it reported 49, 48, 0, 51, 180, 175 and 156 BPM inside eight seconds, and its
-  rate swung ninefold between consecutive half-seconds. Use it only for things
-  reborn each beat, where a jump is invisible. For continuous motion use
-  `u_flow`; for anything that must land on a hit use the onset envelopes
-  `u_kick`, `u_snare`, `u_hat`, which are measurements rather than inferences.
-  A metronomic test track locks the estimator perfectly, so this is invisible
-  offline and only shows on real music.
-- **Use `specSpread()` wherever frequency maps to a place in the image** —
-  height, distance, angle. Neighbouring pixels then read neighbouring bins, and
-  a raw bin jumps frame to frame, so every peak lands as a hard ridge four or
-  five pixels wide. It looks exactly like a rendering glitch.
-- **A standing wave never travels.** `cos(k·x)` with a pulsing amplitude sits
-  still and throbs. For water, sum travelling waves with dispersion —
-  `omega = sqrt(g k)`, so long waves outrun short ones — and let the music move
-  the amplitudes, never the wavenumbers. Scaling a wave field slides every point
-  in proportion to its distance from the origin.
-- `power()` gives weight in the moments the music leans in, and near zero the
-  rest of the time. Note its edges: `u_dynamics` is a ratio against a slow
-  average and only spans about 0.44 to 0.60 on real material, so reading it as
-  a 0..1 meter leaves anything built on it switched off permanently.
-- Use `spow(x, k)`, never `pow`. `pow(0.0, k)` returns NaN on real drivers, and
-  one NaN turns the whole pixel black.
-- Antialias anything with high gain. Fringes and fine lattices need to be faded
-  toward their own average where they would fall finer than a pixel, or they
-  tear into what looks like corruption.
-- The frame is sized by a pixel budget (`Renderer.maxPixels`), not by the
-  display, and the renderer lowers resolution on its own if frames run long.
-  These shaders are fill-rate bound; on a 5K panel the unbudgeted frame is 15
-  million pixels.
+```sh
+python3 scripts/port-metal.py
+swift test
+```
+
+Native API references: [ScreenCaptureKit](https://developer.apple.com/documentation/screencapturekit)
+and [AVAudioEngine](https://developer.apple.com/documentation/avfaudio/avaudioengine).

@@ -4,6 +4,8 @@ bun.lock
 
 # build output
 dist
+.build/
+.swiftpm/
 
 # editor / os
 .DS_Store
