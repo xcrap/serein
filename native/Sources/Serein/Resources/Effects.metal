@@ -87,7 +87,8 @@ float smoothStep(float a, float b, float x) {
 #define u_dynamics uniforms[27]
 #define u_swell uniforms[28]
 #define u_silence uniforms[29]
-#define u_historyRow uniforms[30]
+#define u_section uniforms[30]
+#define u_historyRow uniforms[31]
 struct Instrument {
     constant float* uniforms;
     texture2d<float> spectrum;
@@ -197,6 +198,25 @@ float specSpread(float x) {
         + specSlow(x + 0.035) + specSlow(x + 0.070)) * 0.2;
 }
 
+float specWide(float x) {
+  return (spec(x - 0.06) + spec(x - 0.03) + spec(x)
+        + spec(x + 0.03) + spec(x + 0.06)) * 0.2;
+}
+
+float specBands(float x) {
+  float f = clamp(x, 0.0, 1.0) * 5.0;
+  float i = min(floor(f), 4.0);
+  float w = smoothStep(0.0, 1.0, f - i);
+  return mix(specSpread(0.06 + i * 0.176), specSpread(0.06 + (i + 1.0) * 0.176), w);
+}
+
+float specBandsFast(float x) {
+  float f = clamp(x, 0.0, 1.0) * 5.0;
+  float i = min(floor(f), 4.0);
+  float w = smoothStep(0.0, 1.0, f - i);
+  return mix(specWide(0.06 + i * 0.176), specWide(0.06 + (i + 1.0) * 0.176), w);
+}
+
 float power() {
   return clamp(smoothStep(0.505, 0.605, u_dynamics) * 0.50
              + smoothStep(0.480, 0.920, u_level) * 0.50, 0.0, 1.0);
@@ -207,16 +227,20 @@ float history(float x, float age) {
   return historyTexture.sample(historySampler, float2(clamp(x, 0.0, 1.0), (row + 0.5) / 256.0)).r;
 }
 
-float3 rampAt(float world, float t) {
-    if (world < 0.5) return nativeRamp(t);
-    int base = clamp(int(world) - 1, 0, 11) * 4;
-    float x = clamp(t, 0.0, 1.0) * 3.0;
-    int stop = min(int(x), 2);
-    return mix(paletteStops[base + stop], paletteStops[base + stop + 1], x - float(stop));
+float3 ramp[4];
+float3 rampStop(float world, int stop) {
+    if (world < 0.5) return nativeRamp(float(stop) / 3.0);
+    return paletteStops[clamp(int(world) - 1, 0, 11) * 4 + stop];
+}
+void preparePalette() {
+    for (int stop = 0; stop < 4; stop++)
+        ramp[stop] = mix(rampStop(u_palette, stop), rampStop(u_paletteTo, stop), u_paletteMix);
 }
 float3 world(float t) {
-    t = clamp(t, 0.0, 1.0);
-    return mix(rampAt(u_palette, t), rampAt(u_paletteTo, t), u_paletteMix);
+    float x = clamp(t, 0.0, 1.0) * 3.0;
+    return ramp[0] + (ramp[1] - ramp[0]) * clamp(x, 0.0, 1.0)
+         + (ramp[2] - ramp[1]) * clamp(x - 1.0, 0.0, 1.0)
+         + (ramp[3] - ramp[2]) * clamp(x - 2.0, 0.0, 1.0);
 }
 
 
@@ -298,17 +322,18 @@ float3 bloom(float2 uv, float2 st) {
 
     float lambert = 0.34 + 0.66 * (0.5 + 0.5 * dot(outward, lightDir));
 
-    float3 tone = world(0.94 - age * 0.60 + u_centroid * 0.10 - grain * 0.16);
+    float3 tone = world(0.94 - age * 0.60 + u_centroid * 0.10 - grain * 0.16 + u_section * 0.06);
 
-    col += tone * shell * fade * lambert * (0.32 + u_level * 0.52);
-    col += tone * diffuse * fade * (0.06 + u_level * 0.14);
+    float charge = 0.45 + u_section * 0.60;
+    col += tone * shell * fade * lambert * (0.32 + u_level * 0.52) * charge;
+    col += tone * diffuse * fade * (0.06 + u_level * 0.14 + u_section * 0.05);
 
     float inside = smoothStep(edge, edge * 0.35, r);
     float stain = fbm(p * (1.9 + age * 1.6) + float2(ident * 2.4 + u_seed, -t * 0.03));
-    col += tone * inside * fade * fade * spow(stain, 1.7) * lambert * (0.18 + u_mid * 0.38);
+    col += tone * inside * fade * fade * spow(stain, 1.7) * lambert * (0.18 + u_mid * 0.38) * charge;
 
     float crest = gauss((r - edge) / (thickness * 0.55));
-    col += world(0.98) * crest * fade * spow(lambert, 2.5) * (0.09 + u_snare * 0.32);
+    col += world(0.98) * crest * fade * spow(lambert, 2.5) * (0.09 + u_snare * 0.32 + u_hat * 0.22);
   }
 
   col += world(0.99) * exp(-spow(r / (0.028 + u_kick * 0.012), 1.6)) * (0.16 + u_kick * 0.40);
@@ -317,11 +342,11 @@ float3 bloom(float2 uv, float2 st) {
   float wisp = fbm(p * (2.4 + u_centroid * 1.6) + float2(-t * 0.022, t * 0.014));
   float beyond = smoothStep(outermost * 0.85, outermost * 1.7, r) * exp(-r * 1.8);
   col += world(0.34 + u_centroid * 0.22) * spow(clamp(wisp, 0.0, 1.0), 2.6)
-    * beyond * (0.16 + u_mid * 0.50);
+    * beyond * (0.16 + u_mid * 0.50) * (0.40 + u_section * 0.80);
 
   float depth = fbm(p * 1.3 + float2(t * 0.014, -t * 0.009));
   col += world(0.20 + u_centroid * 0.24) * spow(depth, 2.0)
-    * (0.045 + u_swell * 0.16 + u_sub * 0.06);
+    * (0.045 + u_swell * 0.16 + u_sub * 0.06 + u_section * 0.04);
 
   return col;
 }
@@ -387,12 +412,12 @@ float3 coil(float2 uv, float2 st) {
     float core = spow(glow, 3.6);
     float halo = spow(glow, 1.8);
 
-    float3 tone = world(0.20 + s * 0.44 + lit * 0.34 + u_centroid * 0.14);
-    col += tone * core * taper * (0.048 + lit * 0.17);
-    col += tone * halo * taper * (0.024 + lit * 0.075);
+    float3 tone = world(0.20 + s * 0.44 + lit * 0.34 + u_centroid * 0.14 + u_section * 0.12);
+    col += tone * core * taper * (0.048 + lit * 0.17 + u_kick * 0.06) * (0.40 + u_section * 0.75);
+    col += tone * halo * taper * (0.024 + lit * 0.075) * (0.35 + u_section * 0.75);
   }
 
-  col += world(0.30) * exp(-nearest * 3.2) * (0.035 + u_level * 0.26 + u_pulse * 0.12);
+  col += world(0.30) * exp(-nearest * 3.2) * (0.035 + u_level * 0.26 + u_pulse * 0.12 + u_section * 0.10);
   col += world(0.55) * exp(-nearest * 8.0) * (0.010 + u_snare * 0.22);
 
   float2 grid = p * 22.0;
@@ -400,7 +425,8 @@ float3 coil(float2 uv, float2 st) {
   float2 f = fract(grid) - 0.5;
   float2 h = hash22(id);
   float mote = smoothStep(0.09, 0.0, length(f - (h - 0.5) * 0.7)) * spow(h.x, 3.0);
-  col += world(0.72) * mote * exp(-nearest * 2.0) * (0.30 + u_hat * 1.1);
+
+  col += world(0.72) * mote * exp(-nearest * 2.0) * (0.10 + u_section * 0.45 + u_hat * 1.1);
 
   return col;
 }
@@ -431,7 +457,7 @@ float3 ink(float2 uv, float2 st) {
 
   float density = fbm(p + 2.6 * r);
 
-  float envelope = exp(-d * d * (2.15 - u_swell * 0.95));
+  float envelope = exp(-d * d * (2.15 - u_swell * 0.75 - u_section * 0.45));
 
   density = clamp((density - 0.30) * 2.7, 0.0, 1.0) * envelope;
   density = spow(density, 1.20);
@@ -446,11 +472,12 @@ float3 ink(float2 uv, float2 st) {
     + swirl * 0.56
     + shear * 0.18
     + u_centroid * 0.26
+    + u_section * 0.10
     + (1.0 - clamp(d, 0.0, 1.0)) * 0.12,
     0.0, 1.0);
 
-  float3 col = world(tone) * density * (0.34 + u_level * 1.55 + u_kick * 0.45);
-  col += world(0.90) * filament * density * (0.04 + u_air * 0.70 + u_hat * 0.50);
+  float3 col = world(tone) * density * (0.34 + u_level * 1.55 + u_kick * 0.45) * (0.45 + u_section * 0.60);
+  col += world(0.90) * filament * density * (0.04 + u_air * 0.70 + u_hat * 0.50 + u_section * 0.25);
 
   float core = exp(-d * (4.4 - u_kick * 1.8 - u_swell * 0.7));
   col += world(0.97) * core * (0.10 + density * 0.55) * (0.08 + u_kick * 1.15 + u_pulse * 0.22);
@@ -514,9 +541,9 @@ float3 harp(float2 uv, float2 st) {
   float top = exp(-(1.0 - height) * 22.0);
   float bottom = exp(-height * 22.0);
   col += world(0.46 + u_centroid * 0.28) * (top + bottom)
-    * (0.020 + u_level * 0.24 + u_pulse * 0.12);
+    * (0.020 + u_level * 0.24 + u_pulse * 0.12 + u_section * 0.10);
 
-  col += world(0.16) * fbm3(p * 1.8 + float2(t * 0.008, -t * 0.005)) * (0.014 + u_air * 0.060);
+  col += world(0.16) * fbm3(p * 1.8 + float2(t * 0.008, -t * 0.005)) * (0.014 + u_air * 0.060 + u_section * 0.020);
 
   return col;
 }
@@ -581,7 +608,7 @@ float3 fathom(float2 uv, float2 st) {
   float tFloor = rd.y < -0.002 ? floorY / rd.y : 1e5;
   float tTop = rd.y > 0.002 ? surfY / rd.y : 1e5;
 
-  float reach = 0.06 + u_swell * 0.74 + u_dynamics * 0.18;
+  float reach = 0.14 + u_swell * 0.36 + u_dynamics * 0.10 + u_section * 0.26;
 
   if (tFloor < 44.0) {
     float3 hit = ro + rd * tFloor;
@@ -604,9 +631,9 @@ float3 fathom(float2 uv, float2 st) {
          * (0.014 + ripple * 0.030) * haze * (0.35 + pool * 0.65);
 
     col += world(0.70 + clamp(c, 0.0, 1.0) * 0.28) * c * haze
-         * (0.22 + pool * 1.15)
-         * (0.03 + litHere * 0.60 + u_level * 0.22
-            );
+         * (0.45 + pool * 1.00)
+
+         * (0.10 + litHere * 0.50 + u_level * 0.18 + u_section * 0.10);
   }
 
   col += world(0.40 + u_centroid * 0.20) * smoothStep(-0.02, 0.50, rd.y)
@@ -627,7 +654,15 @@ float3 fathom(float2 uv, float2 st) {
     shafts += world(0.42 + bd * 0.34) * v * (0.07 + specSpread(bd) * 0.55 + spec(bd) * 0.22);
   }
   shafts /= float(STEPS);
-  col += shafts * (0.10 + reach * 1.05 + u_level * 0.45);
+
+  col += shafts * (0.08 + reach * 0.70 + u_level * 0.28);
+
+  float2 grid = uv * 38.0 + float2(t * 0.6, -t * 0.25);
+  float2 id = floor(grid);
+  float2 k = hash22(id + 31.0);
+  float mote = smoothStep(0.12, 0.0, length(fract(grid) - 0.5 - (k - 0.5) * 0.6)) * step(0.86, k.x);
+  float inLight = clamp(dot(shafts, float3(0.33)) * 6.0, 0.0, 1.0);
+  col += world(0.88) * mote * inLight * (0.06 + u_hat * 0.70 + u_section * 0.10);
 
   return col;
 }
@@ -680,8 +715,9 @@ float3 crown(float2 p, float amount) {
 float3 room(float3 d) {
   float3 lamp = normalize(float3(0.46, 0.26, 1.0));
   float c = max(dot(normalize(d), lamp), 0.0);
-  float3 col = world(0.99) * spow(c, 2600.0) * (4.0 + u_level * 7.0 + u_pulse * 2.0 + power() * 4.0);
-  col += world(0.78 + u_centroid * 0.18) * spow(c, 110.0) * (0.40 + u_level * 1.10);
+
+  float3 col = world(0.99) * spow(c, 2600.0) * (4.0 + u_level * 7.0 + u_pulse * 2.0 + power() * 4.0) * (0.45 + u_section * 0.65);
+  col += world(0.78 + u_centroid * 0.18) * spow(c, 110.0) * (0.40 + u_level * 1.10 + u_section * 0.60);
   col += world(0.44 + u_centroid * 0.20) * spow(c, 16.0) * (0.020 + u_air * 0.09);
 
   col += world(0.30 + u_centroid * 0.18) * smoothStep(-0.12, 0.8, d.y)
@@ -708,7 +744,8 @@ float3 quicksilver(float2 uv, float2 st) {
   float near = exp(-dist * 0.14);
 
   float pw = power();
-  float amp = (0.036 + u_level * 0.145 + u_swell * 0.075 + pw * 0.075) * pump * near;
+  float amp = (0.036 + u_level * 0.145 + u_swell * 0.075 + pw * 0.075 + u_section * 0.050) * pump * near
+            * (0.50 + u_section * 0.75);
 
   float3 lat = sea(p, t, band, pump);
   float3 ring = crown(p, 0.010 + u_kick * 0.030) * near;
@@ -731,6 +768,310 @@ float3 quicksilver(float2 uv, float2 st) {
 
   return col;
 }
+
+
+float coronaNoise(float2 p, float period) {
+  float2 i = floor(p);
+  float2 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  float x0 = glmod(i.x, period);
+  float x1 = glmod(i.x + 1.0, period);
+  return mix(mix(hash21(float2(x0, i.y)), hash21(float2(x1, i.y)), f.x),
+             mix(hash21(float2(x0, i.y + 1.0)), hash21(float2(x1, i.y + 1.0)), f.x), f.y);
+}
+
+float coronaStreams(float turn, float rho, float t) {
+  float u = turn * 13.0 + rho * 0.22;
+  float v = rho * 1.25 - t * 0.50;
+  return coronaNoise(float2(u, v), 13.0) * 0.50
+       + coronaNoise(float2(u * 3.0 + 3.1, v * 1.3 - t * 0.19), 39.0) * 0.30
+       + coronaNoise(float2(u * 7.0 + 7.7, v * 1.6 - t * 0.33), 91.0) * 0.20;
+}
+
+float3 corona(float2 uv, float2 st) {
+  float t = u_flow;
+  float px = 1.0 / u_resolution.y;
+  const float R = 0.165;
+
+  float r = length(uv);
+  float turn = atan2(uv.y, uv.x) / TAU + 0.5 + t * 0.0025;
+  float h = max(r - R, 0.0);
+  float rho = log(max(r, R) / R);
+
+  float reg = clamp(rho / 1.25, 0.0, 1.0);
+  float sustain = specBands(reg);
+  float lit = specBandsFast(reg);
+
+  float helmets = coronaNoise(float2(turn * 5.0, t * 0.018 + u_seed * 3.7), 5.0);
+  float petals = 0.10 + 2.3 * helmets * helmets * helmets;
+  float streams = coronaStreams(turn, rho, t);
+  float structure = spow(smoothStep(0.30, 0.78, streams), 1.4) * petals;
+
+  float reach = 0.17 + u_swell * 0.10 + u_section * 0.10;
+  float body = exp(-h / reach);
+  float tail = spow(R / max(r, R), 1.5);
+  float tone = clamp(0.30 + 0.62 * exp(-rho * 1.4) + streams * 0.08 + u_centroid * 0.10 + u_section * 0.08, 0.0, 1.0);
+
+  float3 col = float3(0.0);
+
+  col += world(tone) * structure * body * (0.30 + sustain * 0.70 + lit * 0.35 + u_level * 0.20) * (0.40 + u_section * 0.70);
+  col += world(tone * 0.85) * structure * tail * (0.05 + sustain * 0.25 + u_swell * 0.06);
+
+  float inner = exp(-h / 0.026);
+  col += world(0.90) * inner * (0.25 + 0.75 * structure)
+       * (0.24 + specBands(0.0) * 0.45 + u_kick * 1.20 + u_pulse * 0.15);
+
+  col += world(0.64) * gauss(h / (0.0034 + px)) * (0.18 + u_kick * 1.60 + power() * 0.35);
+
+  float fine = coronaNoise(float2(turn * 110.0, rho * 2.2 - t * 0.8), 110.0);
+  float resolvable = smoothStep(0.8, 3.0, TAU * r / 110.0 / px);
+  col += world(0.80) * spow(fine, 6.0) * resolvable * body * petals
+       * (0.04 + u_hat * 0.55 + u_air * 0.20);
+
+  float arc = TAU * R;
+  for (int i = 0; i < 3; i++) {
+    float k = float(i);
+    float at = fract(u_seed * (0.237 + k * 0.119) + k * 0.331);
+    float along = (fract(turn - at + 0.5) - 0.5) * arc;
+    float width = 0.010 + hash11(k + u_seed) * 0.012;
+    float tall = 0.016 + hash11(k * 3.1 + u_seed) * 0.020;
+    float lick = coronaNoise(float2(along * 70.0, h * 55.0 - t * 1.1), 1000.0);
+    float tongue = gauss(along / width) * exp(-h / tall) * (0.45 + 0.9 * lick);
+    col += world(0.70) * tongue * (0.10 + u_snare * 1.30 + u_mid * 0.20);
+  }
+
+  float disc = smoothStep(R + px, R - px, r);
+  float3 moon = world(0.16) * (0.006 + 0.012 * fbm3(uv * 9.0 + u_seed));
+  col = mix(col, moon, disc);
+
+  col += world(0.12 + u_centroid * 0.10) * exp(-r * 2.4) * (0.014 + u_swell * 0.022);
+  return col;
+}
+
+
+float2 wickFrame(float2 uv, float t, float width, float tall) {
+  const float base = -0.34;
+  float y = (uv.y - base) / tall;
+
+  float rise = t * 0.75;
+  float bend = (noise(float2(y * 2.1 - rise, u_seed)) - 0.5) * 1.25
+             + (noise(float2(y * 4.7 - rise * 1.8, u_seed + 7.3)) - 0.5) * 0.45;
+  float lean = clamp(y, 0.0, 1.4);
+  return float2(uv.x / width - bend * lean * lean * 0.9, y);
+}
+
+float3 wick(float2 uv, float2 st) {
+  float t = u_flow;
+  const float base = -0.34;
+
+  float weight = specSlow(0.10) * 0.6 + specSlow(0.05) * 0.4;
+  float width = 0.096 + weight * 0.020;
+  float tall = 0.50 + u_swell * 0.08 + u_section * 0.08;
+  float2 q = wickFrame(uv, t, width, tall);
+
+  float y = q.y;
+  float bowl = sqrt(max(1.0 - spow(abs(y - 0.24) / 0.30, 2.0), 0.0));
+  float taper = spow(max(1.0 - (y - 0.24) / 0.76, 0.0), 0.85);
+  float profile = mix(bowl, taper, smoothStep(0.20, 0.28, y)) * 0.60;
+  float across = abs(q.x) / max(profile, 0.015);
+  float envelope = gauss(across * 1.1) * smoothStep(-0.06, 0.02, y) * smoothStep(1.02, 0.62, y);
+
+  float streak = fbm3(float2(q.x * 1.4, y * 2.6 - t * 1.1) + u_seed);
+
+  float reg = clamp(y, 0.0, 1.0);
+  float sustain = specBands(reg);
+  float lit = specBandsFast(reg);
+
+  float3 col = float3(0.0);
+
+  float tone = clamp(0.34 + y * 0.40 + envelope * 0.20 + u_centroid * 0.08 + u_section * 0.06, 0.0, 1.0);
+  col += world(tone) * envelope * (0.60 + streak * 0.50) * (0.50 + u_section * 0.55)
+       * (0.42 + sustain * 1.00 + lit * 0.40 + u_level * 0.30);
+
+  float core = gauss(across * 1.9) * gauss((y - 0.32) / 0.22) * smoothStep(-0.02, 0.10, y);
+  col += world(0.98) * core * (0.36 + u_kick * 1.25 + u_pulse * 0.15 + power() * 0.30);
+
+  float cone = gauss(across * 2.6) * gauss((y - 0.06) / 0.08);
+  col *= 1.0 - cone * 0.70;
+
+  float rim = gauss((across - 1.0) / 0.25) * smoothStep(-0.02, 0.08, y) * smoothStep(1.0, 0.45, y);
+  col += world(0.84) * rim * (0.025 + u_snare * 0.50);
+
+  float2 w = uv - float2(0.0, base - 0.012);
+  float stick = gauss(w.x / 0.0030) * smoothStep(0.040, 0.0, abs(w.y + 0.014));
+  col = mix(col, float3(0.004), stick * 0.85);
+  col += world(0.62) * gauss(length(w - float2(0.0, 0.012)) / 0.006) * (0.30 + u_kick * 0.45);
+
+  float2 centre = uv - float2(0.0, base + tall * 0.34);
+  float d = length(centre * float2(1.0, 0.75));
+  col += world(0.60 + u_centroid * 0.10) * exp(-d * 4.4) * (0.05 + u_level * 0.08 + u_kick * 0.16 + u_section * 0.08);
+  col += world(0.32) * exp(-d * 1.7) * (0.018 + u_swell * 0.030 + u_section * 0.030);
+
+  float above = uv.y - (base + tall * 0.85);
+  float2 cell = float2(uv.x * 30.0, uv.y * 30.0 - t * 2.4);
+  float2 id = floor(cell);
+  float2 f = fract(cell) - 0.5;
+  float2 k = hash22(id);
+  float drift = (noise(float2(id.y * 0.37, u_seed)) - 0.5) * 0.9;
+  float ember = smoothStep(0.10, 0.0, length(f - (k - 0.5) * 0.5 - float2(drift, 0.0)))
+              * step(0.90, k.y);
+  float plume = gauss(uv.x / (0.03 + max(above, 0.0) * 0.45)) * smoothStep(-0.02, 0.06, above)
+              * exp(-max(above, 0.0) * 3.2);
+
+  col += world(0.80) * ember * plume * (0.04 + u_section * 0.22 + u_hat * 1.4 + u_air * 0.3);
+  return col;
+}
+
+
+float borealShore(float bearing, float elevation, float px) {
+
+  if (elevation > 0.065) return 0.0;
+  float hills = 0.006 + 0.016 * fbm3(float2(bearing * 1.8 + u_seed, 0.5));
+  float cover = smoothStep(hills + px, hills - px, elevation);
+  const float SPACING = 0.016;
+  float cell = floor(bearing / SPACING);
+  float up = elevation - hills;
+  for (int j = -2; j <= 2; j++) {
+    float id = cell + float(j);
+    float stand = noise(float2(id * SPACING * 6.0, u_seed * 5.0));
+    float kind = hash11(id * 1.37 + 5.0);
+    if (kind > stand * 1.3) continue;
+    float centre = (id + hash11(id * 2.11 + 1.0)) * SPACING;
+    float height = (0.012 + 0.040 * hash11(id * 3.7 + 2.0)) * (0.5 + stand * 0.9);
+    float tier = 0.45 + 0.55 * fract(up * (150.0 + kind * 60.0) + kind * 3.0);
+    float reach = max(height - up, 0.0) * (0.15 + kind * 0.06) * tier + 0.0006;
+    cover = max(cover, smoothStep(-px, px, reach - abs(bearing - centre)) * step(up, height));
+  }
+  return cover;
+}
+
+float borealFold(float u, float t, float seed) {
+  return 1.25 * sin(0.40 * u - t * 0.17 + seed * 3.0)
+       + 0.50 * sin(1.10 * u + t * 0.12 + seed * 1.7);
+}
+
+float3 borealSky(float3 d, float t, float px, float3 bands) {
+  float level = max(length(d.xz), 1e-4);
+  float bearing = d.x / d.z;
+  float elevation = d.y / level;
+
+  float3 col = world(0.14 + u_centroid * 0.06) * (0.012 + 0.070 * exp(-elevation * 5.0))
+           * (0.8 + u_level * 0.4 + u_swell * 0.3);
+
+  float milky = gauss((elevation * 0.95 + bearing * 0.50 - 0.42) / 0.20);
+  if (milky > 0.02) {
+    float clouds = fbm3(float2(bearing, elevation) * 5.0 + u_seed * 1.3);
+    col += mix(float3(0.55, 0.60, 0.72), world(0.30), 0.35) * milky * spow(clouds, 2.2) * 0.060;
+  }
+
+  for (int layer = 0; layer < 2; layer++) {
+    float scale = layer == 0 ? 90.0 : 210.0;
+    float2 cell = float2(bearing, elevation) * scale;
+    float2 id = floor(cell);
+    float2 k = hash22(id + 17.0 + float(layer) * 51.0);
+    float chance = layer == 0 ? 0.935 : 0.90 - milky * 0.12;
+    float star = smoothStep(0.17, 0.0, length(fract(cell) - 0.5 - (k - 0.5) * 0.6)) * step(chance, k.x);
+    float glint = 0.5 + 0.5 * sin(u_time * (1.3 + k.y * 2.1) + k.y * 40.0);
+
+    float bright = (layer == 0 ? 0.20 + k.y * 0.45 : 0.07 + k.y * 0.10) * (1.25 - u_section * 0.55);
+    col += float3(0.85, 0.88, 1.0) * star * bright * (0.55 + glint * 0.45 + u_hat * 0.9);
+  }
+
+  const float FOOT = 1.35;
+  float tall = 1.4 + u_swell * 0.6 + u_section * 0.9;
+  float3 light = float3(0.0);
+  float glow = 0.0;
+  float before0 = 0.0;
+  float before1 = 0.0;
+  float zBefore = 1.0;
+  const int STEPS = 40;
+  for (int i = 0; i <= STEPS; i++) {
+    float z = 1.0 * exp(float(i) * 0.096);
+    float3 p = d * (z / d.z);
+    if (i > 0 && p.y - FOOT * 1.9 > tall * 3.2) break;
+
+    for (int c = 0; c < 2; c++) {
+      float seed = float(c) * 4.7;
+
+      float2 origin = c == 0 ? float2(-3.2, 0.6) : float2(-5.8, 2.9);
+      float2 along = normalize(float2(0.85, 1.0));
+      float foot = c == 0 ? FOOT : FOOT * 1.9;
+      float2 across = float2(-along.y, along.x);
+      float off = dot(p.xz - origin, across) - borealFold(dot(p.xz - origin, along), t, seed);
+      float before = c == 0 ? before0 : before1;
+      if (c == 0) before0 = off; else before1 = off;
+      if (i == 0) continue;
+
+      float haze = exp(-z * 0.045) * (c == 0 ? 1.0 : 0.80 * smoothStep(0.25, 0.75, u_section));
+      float h = p.y - foot;
+
+      float near = gauss(off / ((z - zBefore) * 0.9));
+      if (near > 0.004) glow += near * (h > 0.0 ? exp(-h / tall) : exp(h * 6.0)) * haze;
+
+      if (before * off > 0.0) continue;
+
+      float f = before / (before - off);
+      float zc = mix(zBefore, z, f);
+      float3 pc = d * (zc / d.z);
+      float hc = pc.y - foot;
+      float u = dot(pc.xz - origin, along);
+      float slant = (z - zBefore) / max(abs(off - before), 1e-3);
+
+      float weight = slant / (1.0 + 0.12 * slant * slant);
+      float enter = smoothStep(0.0, 5.0, u);
+
+      float footprint = zc * px;
+      float fine = smoothStep(0.9, 0.3, footprint * 16.0);
+      float rays = noise(float2(u * 5.5 - t * 0.9, hc * 0.35 + seed)) * (1.0 - 0.45 * fine)
+                 + noise(float2(u * 16.0 - t * 1.5, hc * 0.7 + seed * 2.0)) * 0.45 * fine;
+      float stand = tall * (0.30 + 1.30 * rays * rays);
+
+      float profile = hc > 0.0 ? exp(-hc / stand) : exp(hc * 14.0) + 0.05 * exp(hc * 1.2);
+
+      float surge = 0.25 + 1.35 * spow(noise(float2(u * 0.28 - t * 0.35, seed * 3.0)), 1.4);
+
+      float up = clamp(hc / (tall * 1.4), 0.0, 1.0);
+      float sustain = up < 0.5 ? mix(bands.x, bands.y, up * 2.0) : mix(bands.y, bands.z, up * 2.0 - 1.0);
+      float streaks = 0.40 + spow(rays, 2.2 + u_snare * 2.0) * (2.0 + u_snare * 1.5);
+
+      float fringe = exp(-abs(hc) / 0.08) * (0.34 + u_kick * 1.60 + power() * 0.25);
+      float tone = mix(0.44, 0.84, up) + u_centroid * 0.06;
+
+      light += (world(tone) * profile * streaks * (0.35 + sustain * 0.90 + u_level * 0.20)
+              + world(0.97) * fringe * streaks)
+             * weight * surge * enter * haze * (1.0 + power() * 0.4);
+    }
+    zBefore = z;
+  }
+  col += (light * 0.56 + world(0.58) * glow * 0.028) * (0.45 + u_section * 0.60);
+
+  col += world(0.52) * exp(-max(elevation, 0.0) * 22.0) * (0.035 + u_level * 0.04 + u_swell * 0.03);
+
+  float land = borealShore(bearing, elevation, px);
+  return mix(col, float3(0.002), land);
+}
+
+float3 boreal(float2 uv, float2 st) {
+  float t = u_flow;
+  float px = 1.15 / u_resolution.y;
+
+  float3 rd = normalize(float3(uv.x * 1.15, uv.y * 1.15 + 0.21, 1.0));
+
+  float3 bands = float3(specSpread(0.10), specSpread(0.45), specSpread(0.80));
+
+  if (rd.y >= 0.0) return borealSky(rd, t, px, bands);
+
+  float below = -rd.y;
+  float reach = 0.08 / below;
+  float2 w = rd.xz * reach;
+  float ripple = noise(float2(w.x * 2.2 + t * 0.10, w.y * 0.8 - t * 0.28))
+               + noise(float2(w.x * 5.3 - t * 0.07, w.y * 1.9 - t * 0.41)) * 0.5 - 0.75;
+  float calm = smoothStep(0.0, 0.25, below);
+  float3 mirrored = normalize(float3(rd.x + ripple * 0.030 * calm, below + ripple * 0.022 * calm, rd.z));
+  float fresnel = 0.45 + 0.40 * exp(-below * 6.0);
+  float3 col = borealSky(mirrored, t, px, bands) * fresnel;
+  return col + world(0.10) * 0.006;
+}
 float3 scene(int effect, float2 uv, float2 st) {
  switch(effect) {
 case 0: return veil(uv, st);
@@ -740,6 +1081,9 @@ case 3: return ink(uv, st);
 case 4: return harp(uv, st);
 case 5: return fathom(uv, st);
 case 6: return quicksilver(uv, st);
+case 7: return corona(uv, st);
+case 8: return wick(uv, st);
+case 9: return boreal(uv, st);
 default: return veil(uv, st);
 }
 }
@@ -749,6 +1093,7 @@ float3 aces(float3 x) {
 }
 
 float4 render(float2 position, int effect) {
+  preparePalette();
   float2 st = position / u_resolution;
   float2 uv = (position - 0.5 * u_resolution) / u_resolution.y;
 
@@ -775,11 +1120,14 @@ vertex VertexOut fullScreen(uint id [[vertex_id]]) {
     float2 p = float2((id << 1) & 2, id & 2);
     return {float4(p * 2.0 - 1.0, 0.0, 1.0)};
 }
+// Each effect is its own specialised pipeline. With the effect as a runtime
+// argument, every effect was compiled for the register pressure of the
+// heaviest one; as a function constant, the other branches are removed.
+constant int effectIndex [[function_constant(0)]];
 fragment float4 visualizer(VertexOut in [[stage_in]],
                            constant float* uniforms [[buffer(0)]],
-                           constant int& effect [[buffer(1)]],
                            texture2d<float> spectrum [[texture(0)]],
                            texture2d<float> historyTexture [[texture(1)]]) {
     Instrument instrument {uniforms, spectrum, historyTexture};
-    return instrument.render(float2(in.position.x, uniforms[1] - in.position.y), effect);
+    return instrument.render(float2(in.position.x, uniforms[1] - in.position.y), effectIndex);
 }

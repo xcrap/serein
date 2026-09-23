@@ -1,7 +1,7 @@
 # Serein
 
 A listening instrument. Give it a browser tab that is playing music and it
-answers in light — seven full-screen presets driven by what the music is
+answers in light — ten full-screen presets driven by what the music is
 actually doing, not by a level meter.
 
 ## Serein in Motion
@@ -21,7 +21,7 @@ bun install
 bun run dev      # http://127.0.0.1:5173
 ```
 
-`bun run build` type-checks and produces a static bundle in `dist/`.
+`bun run build` type-checks and produces a static bundle in `dist/web/`.
 
 ## Giving it sound
 
@@ -46,7 +46,7 @@ Press `H` in the app for the full list.
 | `space` | Spotify play / pause |
 | `n` | next preset |
 | `←` / `→` | previous / next Spotify track |
-| `1`–`7` | choose a preset |
+| `1`–`9`, `0` | choose a preset |
 | `c` / `shift c` | next / previous colour world |
 | `l` / `m` / `o` | tab / room / file |
 | `s` | connect or disconnect Spotify |
@@ -67,6 +67,9 @@ Press `H` in the app for the full list.
 | **Harp** | sixteen strings, struck and left to ring |
 | **Fathom** | sunlight bent through the surface onto the seabed |
 | **Quicksilver** | liquid metal standing up into the shape of the note |
+| **Corona** | an eclipse, its light streaming out on the wind |
+| **Wick** | one flame, the music rising through it as heat |
+| **Boreal** | curtains of light folding away over a still lake |
 
 Thirteen colour worlds sit on top, and they cross-dissolve rather than cut:
 **Native** (each preset's own palette), then Ember, Glacier, Nocturne, Iris,
@@ -91,7 +94,11 @@ and nothing downstream touches the audio directly:
 - Short-term against long-term loudness, for swells and drops.
 - Two spectra, not one: a fast one that hears transients, and a slow one that
   hears sustained instruments.
-- A **motion rate** from tempo and loudness, which drives the `u_flow` clock.
+- A **section**, `u_section`: phrase loudness in dB against the song's own
+  loudest and quietest of the last minute, seeded with a typical master's
+  -20 dBFS. Auto-gained levels read a long chorus like the verse; this does not.
+- A **motion rate** from tempo, loudness and section, which drives the
+  `u_flow` clock.
 
 ## Structure
 
@@ -107,7 +114,11 @@ src/
 
 Each preset implements `vec3 scene(vec2 uv, vec2 st)` plus its own
 `nativeRamp`, and is wrapped with the shared uniforms and post chain. Adding one
-means writing a file and adding a line to `gl/presets/index.ts`.
+means writing a file and adding a line to `gl/presets/index.ts`. For the
+native app, run `python3 scripts/port-metal.py`, which takes the order from that
+list, and add the effect to `Effect.all` in `native/Sources/Serein/Instrument.swift`.
+The port stops on names that are valid GLSL but reserved in Metal, such as
+`half`; they would otherwise fail only at runtime.
 
 Things worth knowing before editing shaders. Most of these were learned the
 expensive way, by shipping a preset that felt wrong and having to find out why:
@@ -138,11 +149,22 @@ expensive way, by shipping a preset that felt wrong and having to find out why:
   height, distance, angle. Neighbouring pixels then read neighbouring bins, and
   a raw bin jumps frame to frame, so every peak lands as a hard ridge four or
   five pixels wide. It looks exactly like a rendering glitch.
+- **Use `specBands()` when a whole register is laid across a short span** — a
+  flame's height, the distance from a disc's edge. There every bin is a pixel
+  or two, and even `specSpread()` prints the spectrum's bin-to-bin roughness as
+  fine parallel lines: scanlines up a flame, rings round a disc. `specBands()`
+  reads six fixed bands every pixel shares and blends between them, so it
+  carries the spectrum's shape and none of its grain.
 - **A standing wave never travels.** `cos(k·x)` with a pulsing amplitude sits
   still and throbs. For water, sum travelling waves with dispersion —
   `omega = sqrt(g k)`, so long waves outrun short ones — and let the music move
   the amplitudes, never the wavenumbers. Scaling a wave field slides every point
   in proportion to its distance from the origin.
+- **Answer the song's sections.** Every preset gives `u_section` a job in
+  light, density, colour and phrase-scale size: a quiet passage keeps the form
+  present but dim, cool and sparse; a full one burns brighter, warmer, denser.
+  Scale it so the fullest passage lands near the preset's old brightness, not
+  above it, or loud masters wash out.
 - `power()` gives weight in the moments the music leans in, and near zero the
   rest of the time. Note its edges: `u_dynamics` is a ratio against a slow
   average and only spans about 0.44 to 0.60 on real material, so reading it as

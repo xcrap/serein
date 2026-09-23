@@ -70,6 +70,7 @@ uniform float u_beatTime;
 uniform float u_dynamics;
 uniform float u_swell;    // loudness on a long fuse — for size, not brightness
 uniform float u_silence;
+uniform float u_section;  // this passage within the song: 0 its quietest, 1 its fullest
 
 uniform sampler2D u_spectrum;   // 256 x 2 — row 0 fast, row 1 slow
 uniform sampler2D u_history;    // 256 x 256, one row per frame
@@ -207,6 +208,38 @@ float specSpread(float x) {
         + specSlow(x + 0.035) + specSlow(x + 0.070)) * 0.2;
 }
 
+/** The fast spectrum over a wide window: one register's light, not one bin's. */
+float specWide(float x) {
+  return (spec(x - 0.06) + spec(x - 0.03) + spec(x)
+        + spec(x + 0.03) + spec(x + 0.06)) * 0.2;
+}
+
+/**
+ * The spectrum as a smooth function of place — for when a whole register is
+ * laid across only a few hundred pixels, a height or a distance from an edge.
+ *
+ * specSpread still follows the bins. Spread the register that tightly and
+ * every bin is a pixel or two, so the spectrum's bin-to-bin roughness prints
+ * as fine parallel lines, rings round a disc, scanlines up a flame. Averaging
+ * five rough samples does not remove that. This reads six fixed bands, which
+ * every pixel shares, and blends between them, so the picture carries the
+ * shape of the spectrum and none of its grain.
+ */
+float specBands(float x) {
+  float f = clamp(x, 0.0, 1.0) * 5.0;
+  float i = min(floor(f), 4.0);
+  float w = smoothstep(0.0, 1.0, f - i);
+  return mix(specSpread(0.06 + i * 0.176), specSpread(0.06 + (i + 1.0) * 0.176), w);
+}
+
+/** The same six bands from the fast spectrum, for light that follows hits. */
+float specBandsFast(float x) {
+  float f = clamp(x, 0.0, 1.0) * 5.0;
+  float i = min(floor(f), 4.0);
+  float w = smoothstep(0.0, 1.0, f - i);
+  return mix(specWide(0.06 + i * 0.176), specWide(0.06 + (i + 1.0) * 0.176), w);
+}
+
 /**
  * How hard the music is leaning in, 0 .. 1, and near zero most of the time.
  *
@@ -291,6 +324,7 @@ export const UNIFORM_NAMES = [
   "u_dynamics",
   "u_swell",
   "u_silence",
+  "u_section",
   "u_spectrum",
   "u_history",
   "u_historyRow",

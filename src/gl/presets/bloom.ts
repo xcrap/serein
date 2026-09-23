@@ -76,19 +76,21 @@ vec3 scene(vec2 uv, vec2 st) {
 
     // Each ring sits at its own place in the ramp; four of them make a
     // gradient rather than four copies of one colour.
-    vec3 tone = world(0.94 - age * 0.60 + u_centroid * 0.10 - grain * 0.16);
+    vec3 tone = world(0.94 - age * 0.60 + u_centroid * 0.10 - grain * 0.16 + u_section * 0.06);
 
-    col += tone * shell * fade * lambert * (0.32 + u_level * 0.52);
-    col += tone * diffuse * fade * (0.06 + u_level * 0.14);
+    // A quiet passage releases faint rings; a full one, heavy ones.
+    float charge = 0.45 + u_section * 0.60;
+    col += tone * shell * fade * lambert * (0.32 + u_level * 0.52) * charge;
+    col += tone * diffuse * fade * (0.06 + u_level * 0.14 + u_section * 0.05);
 
     // Pigment left behind the front — the inside is stained, not empty.
     float inside = smoothstep(edge, edge * 0.35, r);
     float stain = fbm(p * (1.9 + age * 1.6) + vec2(ident * 2.4 + u_seed, -t * 0.03));
-    col += tone * inside * fade * fade * spow(stain, 1.7) * lambert * (0.18 + u_mid * 0.38);
+    col += tone * inside * fade * fade * spow(stain, 1.7) * lambert * (0.18 + u_mid * 0.38) * charge;
 
     // Where the ink is thickest it catches the light along its crest.
     float crest = gauss((r - edge) / (thickness * 0.55));
-    col += world(0.98) * crest * fade * spow(lambert, 2.5) * (0.09 + u_snare * 0.32);
+    col += world(0.98) * crest * fade * spow(lambert, 2.5) * (0.09 + u_snare * 0.32 + u_hat * 0.22);
   }
 
   // The drop itself: small and contained.
@@ -99,12 +101,12 @@ vec3 scene(vec2 uv, vec2 st) {
   float wisp = fbm(p * (2.4 + u_centroid * 1.6) + vec2(-t * 0.022, t * 0.014));
   float beyond = smoothstep(outermost * 0.85, outermost * 1.7, r) * exp(-r * 1.8);
   col += world(0.34 + u_centroid * 0.22) * spow(clamp(wisp, 0.0, 1.0), 2.6)
-    * beyond * (0.16 + u_mid * 0.50);
+    * beyond * (0.16 + u_mid * 0.50) * (0.40 + u_section * 0.80);
 
   // The volume it all sits in, so the frame is water rather than black paper.
   float depth = fbm(p * 1.3 + vec2(t * 0.014, -t * 0.009));
   col += world(0.20 + u_centroid * 0.24) * spow(depth, 2.0)
-    * (0.045 + u_swell * 0.16 + u_sub * 0.06);
+    * (0.045 + u_swell * 0.16 + u_sub * 0.06 + u_section * 0.04);
 
   return col;
 }`;

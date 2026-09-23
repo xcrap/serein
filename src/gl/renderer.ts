@@ -255,6 +255,7 @@ export class Renderer {
     gl.uniform1f(u.get("u_dynamics")!, features.dynamics);
     gl.uniform1f(u.get("u_swell")!, features.swell);
     gl.uniform1f(u.get("u_silence")!, features.silence);
+    gl.uniform1f(u.get("u_section")!, features.section);
 
     gl.uniform1i(u.get("u_spectrum")!, 0);
     gl.uniform1i(u.get("u_history")!, 1);

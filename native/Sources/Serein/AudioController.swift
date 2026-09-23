@@ -61,7 +61,7 @@ final class AudioController: ObservableObject {
     @Published private(set) var subtitle = "Play Spotify, then choose System audio."
     @Published var error: String?
     private(set) var analyzer = AudioAnalyzer()
-    private var engine: AVAudioEngine?
+    private(set) var engine: AVAudioEngine?
     private var player: AVAudioPlayerNode?
     private var file: AVAudioFile?
     private var stream: SCStream?
@@ -71,13 +71,25 @@ final class AudioController: ObservableObject {
     private var generation = UUID()
     private var fileEnded = false
     private var pausedPosition: Double = 0
+    /// Where in the file the current schedule starts, in frames.
+    private var segmentStart: AVAudioFramePosition = 0
+    /// Identifies the current schedule: stopping a player completes the one
+    /// before it, and that completion must not read as the file ending.
+    private var scheduled = 0
+    private var outputObserver: NSObjectProtocol?
+    /// The playhead on the wall clock since playback last started. The engine
+    /// reports no render time once it has stopped, which it has by the time an
+    /// output change is announced; without this the file restarted from zero.
+    private var anchor: (at: CFTimeInterval, position: Double)?
 
     var duration: Double { file.map { Double($0.length) / $0.processingFormat.sampleRate } ?? 0 }
     var position: Double {
         if fileEnded { return duration }
         if source == .file && !isPlaying { return pausedPosition }
-        guard let player, let time = player.lastRenderTime, let value = player.playerTime(forNodeTime: time) else { return 0 }
-        return min(duration, Double(value.sampleTime) / value.sampleRate)
+        guard let player, let file, let time = player.lastRenderTime, let value = player.playerTime(forNodeTime: time) else {
+            return anchor.map { min(duration, $0.position + CACurrentMediaTime() - $0.at) } ?? 0
+        }
+        return min(duration, Double(segmentStart) / file.processingFormat.sampleRate + Double(value.sampleTime) / value.sampleRate)
     }
 
     func start(_ requested: AudioSource, url: URL? = nil) async {
@@ -134,9 +146,14 @@ final class AudioController: ObservableObject {
                 }
                 self.engine = engine; self.player = player; self.file = file
                 fileEnded = false
-                scheduleFile()
+                schedule()
+                outputObserver = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange,
+                                                                        object: engine, queue: .main) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.outputChanged() }
+                }
                 try engine.start()
                 player.play()
+                anchor = (CACurrentMediaTime(), 0)
                 let parts = url.deletingPathExtension().lastPathComponent.components(separatedBy: " - ")
                 title = parts.count > 1 ? parts.dropFirst().joined(separator: " - ") : parts[0]
                 subtitle = parts.count > 1 ? parts[0] : url.pathExtension.uppercased() + " · local audio"
@@ -150,12 +167,16 @@ final class AudioController: ObservableObject {
         }
     }
 
-    private func scheduleFile() {
-        guard let player, let file else { return }
-        let token = generation
-        player.scheduleFile(file, at: nil, completionCallbackType: .dataPlayedBack) { [weak self] _ in
+    private func schedule(from frame: AVAudioFramePosition = 0) {
+        guard let player, let file, frame < file.length else { return }
+        segmentStart = frame
+        scheduled += 1
+        let token = generation, id = scheduled
+        player.scheduleSegment(file, startingFrame: frame, frameCount: AVAudioFrameCount(file.length - frame),
+                               at: nil, completionCallbackType: .dataPlayedBack) { [weak self] _ in
             Task { @MainActor in
-                guard let self, self.generation == token else { return }
+                guard let self, self.generation == token, self.scheduled == id else { return }
+                self.anchor = nil
                 self.isPlaying = false
                 self.fileEnded = true
                 self.player?.stop()
@@ -164,11 +185,38 @@ final class AudioController: ObservableObject {
     }
 
     func togglePlayback() {
-        guard source == .file, let player else { return }
-        if isPlaying { pausedPosition = position; player.pause(); isPlaying = false }
+        guard source == .file, let engine, let player else { return }
+        if isPlaying { pausedPosition = position; player.pause(); isPlaying = false; anchor = nil }
         else {
-            if fileEnded { fileEnded = false; scheduleFile() }
+            // A player started on a stopped engine raises, and the app with it.
+            if !engine.isRunning {
+                do { try engine.start() } catch { self.error = error.localizedDescription; return }
+            }
+            let from = fileEnded ? 0 : pausedPosition
+            if fileEnded { fileEnded = false; schedule() }
             player.play(); isPlaying = true
+            anchor = (CACurrentMediaTime(), from)
+        }
+    }
+
+    /// A change of output device — headphones, AirPods, a display's speakers —
+    /// stops the engine. Unhandled, the file fell silent while the interface
+    /// still showed it playing, and the next play crashed on the stopped engine.
+    /// Pick up from the same place on whatever the output now is.
+    func outputChanged() {
+        guard source == .file, let engine, let player, let file else { return }
+        let resume = isPlaying
+        let frame = AVAudioFramePosition(position * file.processingFormat.sampleRate)
+        player.stop()
+        if !fileEnded { schedule(from: min(frame, file.length - 1)) }
+        do { try engine.start() } catch {
+            isPlaying = false
+            self.error = "The audio output changed and playback could not resume.\n\n\(error.localizedDescription)"
+            return
+        }
+        if resume {
+            player.play()
+            anchor = (CACurrentMediaTime(), Double(segmentStart) / file.processingFormat.sampleRate)
         }
     }
 
@@ -187,12 +235,16 @@ final class AudioController: ObservableObject {
 
     private func release() async {
         generation = UUID()
+        if let outputObserver { NotificationCenter.default.removeObserver(outputObserver) }
+        outputObserver = nil
         let oldStream = stream
         stream = nil; sink = nil
         player?.stop(); engine?.stop()
         engine = nil; player = nil; file = nil
         fileEnded = false
         pausedPosition = 0
+        segmentStart = 0
+        anchor = nil
         if let url = scopedURL { url.stopAccessingSecurityScopedResource(); scopedURL = nil }
         source = .resting; isPlaying = false
         title = "A listening instrument"; subtitle = "Play Spotify, then choose System audio."

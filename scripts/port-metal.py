@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Rebuild the original seven Metal effects from the preserved WebGL sources.
+"""Rebuild the Metal effects from the WebGL sources, which stay the originals.
 
 Run only when intentionally refreshing the port. The app ships the generated
 Metal source and has no JavaScript, Python, or WebGL runtime dependency.
@@ -29,7 +29,8 @@ def metal(source):
     source = re.sub(r'mat2\(([^,]+),([^,]+),([^,]+),([^\)]+)\)',
                     r'float2x2(float2(\1,\2), float2(\3,\4))', source)
     source = source.replace('mat2', 'float2x2')
-    source = source.replace('atan(p.y, p.x)', 'atan2(p.y, p.x)')
+    # GLSL spells two-argument arctangent atan(y, x); Metal spells it atan2.
+    source = re.sub(r'\batan\(([^,()]+),', r'atan2(\1,', source)
     source = re.sub(r'\bmod\(', 'glmod(', source)
     source = source.replace('texture(u_spectrum,', 'spectrum.sample(spectrumSampler,')
     source = source.replace('texture(u_history,', 'historyTexture.sample(historySampler,')
@@ -43,29 +44,51 @@ colors = []
 for value in hexes:
     n = int(value[1:], 16)
     colors.append('float3(' + ', '.join(f'{((n >> b) & 255)/255:.6f}' for b in (16, 8, 0)) + ')')
-palette = '''
-float3 rampAt(float world, float t) {
-    if (world < 0.5) return nativeRamp(t);
-    int base = clamp(int(world) - 1, 0, 11) * 4;
+# Every ramp is piecewise linear through the same four knots, so a dissolve
+# between two worlds is the ramp through their blended stops. Blending the
+# stops once per pixel replaces two full ramp evaluations per world() call,
+# and Coil calls world() fifty times a pixel.
+palette = f'''
+float3 ramp[4];
+float3 rampStop(float world, int stop) {{
+    if (world < 0.5) return nativeRamp(float(stop) / 3.0);
+    return paletteStops[clamp(int(world) - 1, 0, {len(hexes) // 4 - 1}) * 4 + stop];
+}}
+void preparePalette() {{
+    for (int stop = 0; stop < 4; stop++)
+        ramp[stop] = mix(rampStop(u_palette, stop), rampStop(u_paletteTo, stop), u_paletteMix);
+}}
+float3 world(float t) {{
     float x = clamp(t, 0.0, 1.0) * 3.0;
-    int stop = min(int(x), 2);
-    return mix(paletteStops[base + stop], paletteStops[base + stop + 1], x - float(stop));
-}
-float3 world(float t) {
-    t = clamp(t, 0.0, 1.0);
-    return mix(rampAt(u_palette, t), rampAt(u_paletteTo, t), u_paletteMix);
-}
+    return ramp[0] + (ramp[1] - ramp[0]) * clamp(x, 0.0, 1.0)
+         + (ramp[2] - ramp[1]) * clamp(x - 1.0, 0.0, 1.0)
+         + (ramp[3] - ramp[2]) * clamp(x - 2.0, 0.0, 1.0);
+}}
 '''
-names = ['veil', 'bloom', 'coil', 'ink', 'harp', 'fathom', 'quicksilver']
+# The browser's preset list decides the order, and the order is the effect index.
+names = re.findall(r'\{ id: "(\w+)"', (root / 'src/gl/presets/index.ts').read_text())
 body = metal(prelude[prelude.index('#define PI'):].replace('${PALETTE_GLSL}', '')) + palette
+# Valid GLSL names that Metal reserves. They fail at runtime, in a compile
+# error that points at generated code, so catch them here by preset.
+reserved = {'half', 'half2', 'half3', 'half4', 'sampler', 'texture', 'device', 'constant',
+            'thread', 'threadgroup', 'kernel', 'vertex', 'fragment', 'patch', 'ray',
+            'and', 'or', 'not', 'xor', 'bitand', 'bitor', 'compl', 'this', 'new', 'delete',
+            'class', 'template', 'namespace', 'typename', 'operator', 'private', 'public',
+            'register', 'static', 'extern', 'auto', 'mutable', 'friend', 'virtual', 'explicit',
+            'union', 'enum', 'typedef', 'goto', 'default', 'case', 'switch', 'char', 'short',
+            'long', 'signed', 'unsigned', 'double', 'volatile', 'inline', 'sizeof', 'typeid'}
 for name in names:
     source = (root / f'src/gl/presets/{name}.ts').read_text().split(f'export const {name} = `')[1].rsplit('`;', 1)[0]
+    code = re.sub(r'//[^\n]*', '', re.sub(r'/\*.*?\*/', '', source, flags=re.S))
+    clashes = sorted(reserved & set(re.findall(r'\b[A-Za-z_]\w*\b', code)))
+    if clashes:
+        raise SystemExit(f'{name}.ts uses {", ".join(clashes)}, reserved in Metal. Rename it.')
     body += '\n' + metal(source).replace('float3 scene(', f'float3 {name}(')
 body += '\nfloat3 scene(int effect, float2 uv, float2 st) {\n switch(effect) {\n'
 body += '\n'.join(f'case {i}: return {name}(uv, st);' for i, name in enumerate(names))
 body += '\ndefault: return veil(uv, st);\n}\n}\n'
 post = shared.split('export const EPILOGUE = `')[1].split('`;')[0]
-post = post.replace('void main()', 'float4 render(float2 position, int effect)')
+post = post.replace('void main() {', 'float4 render(float2 position, int effect) {\n  preparePalette();')
 post = post.replace('gl_FragCoord.xy', 'position').replace('scene(uv, st)', 'scene(effect, uv, st)')
 post = post.replace('outColor =', 'return')
 body += metal(post)
@@ -94,13 +117,16 @@ vertex VertexOut fullScreen(uint id [[vertex_id]]) {
     float2 p = float2((id << 1) & 2, id & 2);
     return {float4(p * 2.0 - 1.0, 0.0, 1.0)};
 }
+// Each effect is its own specialised pipeline. With the effect as a runtime
+// argument, every effect was compiled for the register pressure of the
+// heaviest one; as a function constant, the other branches are removed.
+constant int effectIndex [[function_constant(0)]];
 fragment float4 visualizer(VertexOut in [[stage_in]],
                            constant float* uniforms [[buffer(0)]],
-                           constant int& effect [[buffer(1)]],
                            texture2d<float> spectrum [[texture(0)]],
                            texture2d<float> historyTexture [[texture(1)]]) {
     Instrument instrument {uniforms, spectrum, historyTexture};
-    return instrument.render(float2(in.position.x, uniforms[1] - in.position.y), effect);
+    return instrument.render(float2(in.position.x, uniforms[1] - in.position.y), effectIndex);
 }
 '''
 destination = root / 'native/Sources/Serein/Resources/Effects.metal'

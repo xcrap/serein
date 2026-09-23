@@ -395,8 +395,11 @@ button.now__title:hover {
 
 .presets {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   align-items: center;
-  gap: clamp(20px, 2.8vw, 42px);
+  column-gap: clamp(20px, 2.8vw, 42px);
+  row-gap: 14px;
   pointer-events: auto;
 }
 
@@ -483,6 +486,11 @@ button.now__title:hover {
   }
   .controls {
     align-items: flex-start;
+  }
+  /* Stacked, hidden controls would leave what is playing floating above
+     their empty space; take them out so it settles into the corner. */
+  .controls.is-hidden {
+    display: none;
   }
 }
 

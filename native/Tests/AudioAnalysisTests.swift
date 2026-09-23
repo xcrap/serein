@@ -45,6 +45,67 @@ final class AudioAnalysisTests: XCTestCase {
         XCTAssertGreaterThan(tempo.confidence, 0.5)
     }
 
+    /// A drum pattern over a sustained chord and bass line: kicks on every
+    /// beat at 120 BPM, snares on two and four, hats on the eighths. The first
+    /// detector registered real kicks 0.04 times a second and hats never.
+    func testDetectsKickSnareAndHatsOverSustainedMusic() {
+        let rate: Float = 48000
+        var samples = [Float](repeating: 0, count: Int(rate * 12))
+        var noise: UInt32 = 7
+        func random() -> Float { noise = noise &* 1664525 &+ 1013904223; return Float(noise >> 8) / Float(1 << 23) - 1 }
+        for i in samples.indices {
+            let t = Float(i) / rate
+            // The music the drums sit in: a chord and a bass line.
+            var v = 0.05 * (sin(2 * .pi * 220 * t) + sin(2 * .pi * 277 * t) + sin(2 * .pi * 330 * t))
+            v += 0.08 * sin(2 * .pi * 55 * t)
+            let beat = t.truncatingRemainder(dividingBy: 0.5)
+            v += 0.6 * exp(-beat / 0.06) * sin(2 * .pi * (45 + 75 * exp(-beat / 0.03)) * beat)
+            let bar = t.truncatingRemainder(dividingBy: 1.0)
+            if bar >= 0.5 {
+                let s = bar - 0.5
+                v += 0.25 * exp(-s / 0.07) * (sin(2 * .pi * 1900 * s) + sin(2 * .pi * 2700 * s + 1) + sin(2 * .pi * 3600 * s + 2) + random())
+            }
+            let eighth = t.truncatingRemainder(dividingBy: 0.25)
+            v += 0.08 * exp(-eighth / 0.025) * (sin(2 * .pi * 9100 * eighth) + sin(2 * .pi * 11300 * eighth + 1) + sin(2 * .pi * 13700 * eighth + 2))
+            samples[i] = v
+        }
+        let analyzer = AudioAnalyzer()
+        var previous: [Float] = [0, 0, 0]
+        var hits: [Float] = [0, 0, 0]
+        for start in stride(from: 0, to: samples.count, by: 512) {
+            analyzer.consume(Array(samples[start..<min(samples.count, start + 512)]), sampleRate: Double(rate))
+            let f = analyzer.snapshot()
+            let now = [f.kick, f.snare, f.hat]
+            if Float(start) / rate > 3 {
+                for i in 0..<3 where now[i] > 0.6 && previous[i] <= 0.6 { hits[i] += 1 }
+            }
+            previous = now
+        }
+        let perSecond = hits.map { $0 / 9 }
+        XCTAssertEqual(perSecond[0], 2, accuracy: 0.4, "kicks per second")
+        XCTAssertEqual(perSecond[1], 1, accuracy: 0.3, "snares per second")
+        XCTAssertEqual(perSecond[2], 4, accuracy: 0.8, "hats per second")
+    }
+
+    /// A quiet passage then a loud one: the section reads where each sits in
+    /// the song, which loudness auto-gained over ten seconds cannot.
+    func testSectionTellsAQuietPassageFromAFullOne() {
+        let rate: Float = 48000
+        let analyzer = AudioAnalyzer()
+        func passage(_ amplitude: Float, seconds: Float) -> Float {
+            let count = Int(rate * seconds)
+            let tone = (0..<count).map { amplitude * sin(2 * .pi * 220 * Float($0) / rate) }
+            for start in stride(from: 0, to: count, by: 1024) {
+                analyzer.consume(Array(tone[start..<min(count, start + 1024)]), sampleRate: Double(rate))
+            }
+            return analyzer.snapshot().section
+        }
+        let quiet = passage(0.01, seconds: 20)
+        let full = passage(0.25, seconds: 20)
+        XCTAssertLessThan(quiet, 0.45, "a quiet opening reads as quiet")
+        XCTAssertGreaterThan(full, 0.8, "the loud passage reads as full")
+    }
+
     func testMonoDownmixForPlanarAndInterleavedStereo() {
         for interleaved in [false, true] {
             let format = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 48000, channels: 2, interleaved: interleaved)!
@@ -134,5 +195,41 @@ final class AudioAnalysisTests: XCTestCase {
         await controller.start(.resting)
         XCTAssertEqual(controller.source, .resting)
         XCTAssertFalse(controller.isPlaying)
+    }
+
+    /// Plugging in headphones stops the engine. Playback has to carry on from
+    /// the same place, playing or paused, and a later play must not raise.
+    @MainActor func testPlaybackSurvivesAnOutputChange() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".wav")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let format = AVAudioFormat(standardFormatWithSampleRate: 48000, channels: 1)!
+        let silence = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 96000)!
+        silence.frameLength = 96000
+        silence.floatChannelData![0].initialize(repeating: 0, count: 96000)
+        do { let file = try AVAudioFile(forWriting: url, settings: format.settings); try file.write(from: silence) }
+        let controller = AudioController()
+        await controller.start(.file, url: url)
+        try await Task.sleep(nanoseconds: 300_000_000)
+        let before = controller.position
+        // As the system does it: the engine stops, then the change is announced.
+        controller.engine?.stop()
+        NotificationCenter.default.post(name: .AVAudioEngineConfigurationChange, object: controller.engine)
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertTrue(controller.isPlaying)
+        XCTAssertTrue(controller.engine?.isRunning ?? false, "the engine restarts on the new output")
+        try await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertEqual(controller.position, before + 0.35, accuracy: 0.12, "playback resumes where it was")
+        controller.togglePlayback()
+        let paused = controller.position
+        controller.engine?.stop()
+        NotificationCenter.default.post(name: .AVAudioEngineConfigurationChange, object: controller.engine)
+        try await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertFalse(controller.isPlaying, "a paused file stays paused")
+        XCTAssertEqual(controller.position, paused, accuracy: 0.001)
+        controller.togglePlayback()
+        try await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertTrue(controller.isPlaying)
+        XCTAssertEqual(controller.position, paused + 0.3, accuracy: 0.12)
+        await controller.start(.resting)
     }
 }

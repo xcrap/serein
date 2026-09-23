@@ -61,7 +61,7 @@ final class SpotifyController: ObservableObject {
         }
     }
 
-    private func run(_ body: String, completion: @escaping @MainActor (Result<[String], Error>) -> Void) {
+    private func run(_ body: String, completion: @escaping @MainActor @Sendable (Result<[String], Error>) -> Void) {
         queue.async {
             var details: NSDictionary?
             let script = NSAppleScript(source: "tell application id \"com.spotify.client\"\n\(body)\nend tell")

@@ -12,7 +12,10 @@ struct Effect: Identifiable {
         .init(id: 3, name: "Ink", note: "Pigment lit from inside, pushed by the low end"),
         .init(id: 4, name: "Harp", note: "Sixteen strings, struck and left to ring"),
         .init(id: 5, name: "Fathom", note: "Sunlight bent through the surface onto the seabed"),
-        .init(id: 6, name: "Quicksilver", note: "Liquid metal standing up into the shape of the note")
+        .init(id: 6, name: "Quicksilver", note: "Liquid metal standing up into the shape of the note"),
+        .init(id: 7, name: "Corona", note: "An eclipse, its light streaming out on the wind"),
+        .init(id: 8, name: "Wick", note: "One flame, the music rising through it as heat"),
+        .init(id: 9, name: "Boreal", note: "Curtains of light folding away over a still lake")
     ]
 }
 
@@ -52,7 +55,7 @@ final class Instrument: ObservableObject {
     init() {
         let savedEffect = UserDefaults.standard.integer(forKey: "effect")
         effect = Effect.all.indices.contains(savedEffect) ? savedEffect : 0
-        palette = min(12, max(0, UserDefaults.standard.integer(forKey: "palette")))
+        palette = min(ColourWorld.all.count - 1, max(0, UserDefaults.standard.integer(forKey: "palette")))
     }
     func nextEffect(_ step: Int = 1) { effect = (effect + step + Effect.all.count) % Effect.all.count }
     func nextPalette(_ step: Int = 1) { palette = (palette + step + ColourWorld.all.count) % ColourWorld.all.count }

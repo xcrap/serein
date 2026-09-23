@@ -9,5 +9,7 @@ export default defineConfig({
   },
   build: {
     target: "es2022",
+    // dist/ also holds the native Serein.app, and Vite empties its outDir.
+    outDir: "dist/web",
   },
 });

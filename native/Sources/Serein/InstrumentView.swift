@@ -33,12 +33,16 @@ struct InstrumentView: View {
                                 .frame(maxWidth: min(420, geometry.size.width * 0.46), alignment: .leading)
                                 .transition(.opacity)
                         }
-                        controls(width: geometry.size.width - pad * 2)
-                            .frame(maxWidth: .infinity)
-                            .opacity(chromeVisible ? 1 : 0)
-                            .allowsHitTesting(chromeVisible)
-                            .accessibilityHidden(!chromeVisible)
+                        // Hidden controls leave the layout rather than just going
+                        // transparent, so what is playing settles into the corner
+                        // instead of floating over the space they left.
+                        if chromeVisible {
+                            controls(width: geometry.size.width - pad * 2)
+                                .frame(maxWidth: .infinity)
+                                .transition(.opacity)
+                        }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .padding(.horizontal, pad)
                 .padding(.top, max(44, pad))
@@ -129,8 +133,8 @@ struct InstrumentView: View {
                 presetRow(Effect.all, gap: 27)
                 presetRow(Effect.all, gap: 15)
                 VStack(spacing: 17) {
-                    presetRow(Array(Effect.all.prefix(4)), gap: 27)
-                    presetRow(Array(Effect.all.suffix(3)), gap: 27)
+                    presetRow(Array(Effect.all.prefix((Effect.all.count + 1) / 2)), gap: 27)
+                    presetRow(Array(Effect.all.dropFirst((Effect.all.count + 1) / 2)), gap: 27)
                 }
             }
             HStack(spacing: 30) {
@@ -156,7 +160,7 @@ struct InstrumentView: View {
                 Button(item.name.uppercased()) { instrument.effect = item.id }
                     .buttonStyle(QuietButtonStyle(selected: instrument.effect == item.id))
                     .font(SereinType.mono()).tracking(2.5).fixedSize()
-                    .help("\(item.note) · \(item.id + 1)")
+                    .help("\(item.note) · \((item.id + 1) % 10)")
                     .accessibilityLabel(item.name)
                     .accessibilityAddTraits(instrument.effect == item.id ? .isSelected : [])
             }
@@ -248,7 +252,7 @@ struct InstrumentView: View {
             Text("Serein").font(SereinType.ui(28, weight: 300))
             Text("Give it sound. It answers in light.").foregroundStyle(.secondary)
             Grid(alignment: .leading, horizontalSpacing: 32, verticalSpacing: 10) {
-                ForEach([("1–7", "Choose an effect"), ("N", "Next effect"), ("C / ⇧C", "Next / previous colour world"), ("L / O", "System audio / file"), ("Space", "Play / pause file or Spotify"), ("S", "Connect / disconnect Spotify desktop"), ("← / →", "Previous / next Spotify track"), ("R", "Recompose"), ("F", "Full screen"), ("U / T", "Toggle controls / now playing"), ("H", "Keyboard shortcuts")], id: \.0) { key, action in
+                ForEach([(Effect.all.count > 9 ? "1–9, 0" : "1–\(Effect.all.count)", "Choose an effect"), ("N", "Next effect"), ("C / ⇧C", "Next / previous colour world"), ("L / O", "System audio / file"), ("Space", "Play / pause file or Spotify"), ("S", "Connect / disconnect Spotify desktop"), ("← / →", "Previous / next Spotify track"), ("R", "Recompose"), ("F", "Full screen"), ("U / T", "Toggle controls / now playing"), ("H", "Keyboard shortcuts")], id: \.0) { key, action in
                     GridRow { Text(key).font(SereinType.mono(11)); Text(action).font(SereinType.ui(12)).foregroundStyle(.secondary) }
                 }
             }

@@ -86,13 +86,15 @@ vec3 scene(vec2 uv, vec2 st) {
 
     // Head warm, tail cool, with the register of the music shifting the whole
     // gradient along the ramp.
-    vec3 tone = world(0.20 + s * 0.44 + lit * 0.34 + u_centroid * 0.14);
-    col += tone * core * taper * (0.048 + lit * 0.17);
-    col += tone * halo * taper * (0.024 + lit * 0.075);
+    // The passage decides how much the body burns: a verse leaves it a
+    // glowing thread, a chorus sets the whole length alight and warms it.
+    vec3 tone = world(0.20 + s * 0.44 + lit * 0.34 + u_centroid * 0.14 + u_section * 0.12);
+    col += tone * core * taper * (0.048 + lit * 0.17 + u_kick * 0.06) * (0.40 + u_section * 0.75);
+    col += tone * halo * taper * (0.024 + lit * 0.075) * (0.35 + u_section * 0.75);
   }
 
   // The wake: water the body has just moved through still holds its light.
-  col += world(0.30) * exp(-nearest * 3.2) * (0.035 + u_level * 0.26 + u_pulse * 0.12);
+  col += world(0.30) * exp(-nearest * 3.2) * (0.035 + u_level * 0.26 + u_pulse * 0.12 + u_section * 0.10);
   col += world(0.55) * exp(-nearest * 8.0) * (0.010 + u_snare * 0.22);
 
   // Suspended particles, lit only where the body comes near them.
@@ -101,7 +103,8 @@ vec3 scene(vec2 uv, vec2 st) {
   vec2 f = fract(grid) - 0.5;
   vec2 h = hash22(id);
   float mote = smoothstep(0.09, 0.0, length(f - (h - 0.5) * 0.7)) * spow(h.x, 3.0);
-  col += world(0.72) * mote * exp(-nearest * 2.0) * (0.30 + u_hat * 1.1);
+  // Mostly there in the full passages; the hats set them glinting.
+  col += world(0.72) * mote * exp(-nearest * 2.0) * (0.10 + u_section * 0.45 + u_hat * 1.1);
 
   return col;
 }`;

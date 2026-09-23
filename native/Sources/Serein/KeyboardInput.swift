@@ -32,7 +32,11 @@ struct KeyboardInput: NSViewRepresentable {
                 let key = event.charactersIgnoringModifiers?.lowercased() ?? ""
                 let model = self.instrument
                 model.opening = false
-                if let digit = Int(key), (1...Effect.all.count).contains(digit) { model.effect = digit - 1; return nil }
+                // 1–9, then 0 for the tenth.
+                if let digit = Int(key), Effect.all.indices.contains(digit == 0 ? 9 : digit - 1) {
+                    model.effect = digit == 0 ? 9 : digit - 1
+                    return nil
+                }
                 switch key {
                 case "n": model.nextEffect()
                 case "c": model.nextPalette(event.modifierFlags.contains(.shift) ? -1 : 1)

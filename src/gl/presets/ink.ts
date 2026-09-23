@@ -48,7 +48,7 @@ vec3 scene(vec2 uv, vec2 st) {
 
   // How far the body reaches: sustained loudness only, so it opens and closes
   // across a phrase instead of pumping on every hit.
-  float envelope = exp(-d * d * (2.15 - u_swell * 0.95));
+  float envelope = exp(-d * d * (2.15 - u_swell * 0.75 - u_section * 0.45));
 
   density = clamp((density - 0.30) * 2.7, 0.0, 1.0) * envelope;
   density = spow(density, 1.20);
@@ -70,12 +70,14 @@ vec3 scene(vec2 uv, vec2 st) {
     + swirl * 0.56
     + shear * 0.18
     + u_centroid * 0.26
+    + u_section * 0.10
     + (1.0 - clamp(d, 0.0, 1.0)) * 0.12,
     0.0, 1.0);
 
   // Brightness is the one thing that follows transients.
-  vec3 col = world(tone) * density * (0.34 + u_level * 1.55 + u_kick * 0.45);
-  col += world(0.90) * filament * density * (0.04 + u_air * 0.70 + u_hat * 0.50);
+  // The passage sets how brightly the whole body burns.
+  vec3 col = world(tone) * density * (0.34 + u_level * 1.55 + u_kick * 0.45) * (0.45 + u_section * 0.60);
+  col += world(0.90) * filament * density * (0.04 + u_air * 0.70 + u_hat * 0.50 + u_section * 0.25);
 
   // The core: a light inside the pigment that burns on the beat.
   float core = exp(-d * (4.4 - u_kick * 1.8 - u_swell * 0.7));

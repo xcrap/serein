@@ -4,9 +4,12 @@ import AppKit
 @testable import Serein
 
 final class MetalEffectsTests: XCTestCase {
-    func testEveryEffectOnRealGPU() throws {
+    func testEveryEffectOnRealGPU() async throws {
         let device = try XCTUnwrap(MTLCreateSystemDefaultDevice(), "Metal GPU is required for rendering verification")
-        let pipeline = try MetalSetup.pipeline(device: device, format: .rgba32Float)
+        try renderEveryEffect(device: device, pipelines: try await MetalSetup.pipelines(device: device, format: .rgba32Float))
+    }
+
+    private func renderEveryEffect(device: MTLDevice, pipelines: [MTLRenderPipelineState]) throws {
         let queue = try XCTUnwrap(device.makeCommandQueue())
         let width = 384, height = 240
         let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba32Float, width: width, height: height, mipmapped: false)
@@ -36,13 +39,10 @@ final class MetalEffectsTests: XCTestCase {
                 pass.colorAttachments[0].storeAction = .store
                 let command = try XCTUnwrap(queue.makeCommandBuffer())
                 let encoder = try XCTUnwrap(command.makeRenderCommandEncoder(descriptor: pass))
-                encoder.setRenderPipelineState(pipeline)
                 var uniforms = MetalSetup.uniforms(size: CGSize(width: width, height: height), time: 30, flow: 12,
                     seed: 2.618, palette: 0, paletteTo: 0, paletteMix: 1, grain: 0, features: f, historyRow: 128)
-                XCTAssertEqual(uniforms.count, 31)
-                var index = Int32(effect.id)
-                encoder.setFragmentBytes(&uniforms, length: uniforms.count * 4, index: 0)
-                encoder.setFragmentBytes(&index, length: 4, index: 1)
+                XCTAssertEqual(uniforms.count, 32)
+                MetalSetup.encode(encoder, pipelines: pipelines, effect: effect.id, uniforms: &uniforms)
                 encoder.setFragmentTexture(spectrum, index: 0); encoder.setFragmentTexture(history, index: 1)
                 encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
                 encoder.endEncoding(); command.commit(); command.waitUntilCompleted()

@@ -23,7 +23,10 @@ cp "$BIN_DIR/Serein" "$APP/Contents/MacOS/Serein"
 cp native/Info.plist "$APP/Contents/Info.plist"
 # App bundles use their own resources; SwiftPM's bundle is only for swift run/test.
 rm -rf "$APP/Contents/MacOS/Serein_Serein.bundle"
+# The source stays in the bundle as a fallback for the precompiled library.
 cp native/Sources/Serein/Resources/Effects.metal "$APP/Contents/Resources/Effects.metal"
+xcrun -sdk macosx metal -mmacosx-version-min=14.0 -o "$APP/Contents/Resources/Effects.metallib" \
+    native/Sources/Serein/Resources/Effects.metal
 cp -R native/Sources/Serein/Resources/Fonts "$APP/Contents/Resources/"
 codesign --force --sign "$SIGN_IDENTITY" "$APP"
 codesign --verify --strict "$APP"

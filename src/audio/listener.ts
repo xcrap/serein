@@ -39,6 +39,8 @@ export type Features = {
   dynamics: number;
   /** 1 while nothing is audible. */
   silence: number;
+  /** Where this passage sits in the song's own range over the last minute. */
+  section: number;
   /** Seconds since a marked structural change (drop, breakdown, entry). */
   sinceShift: number;
   /** How fast the piece wants the image to move, roughly 0.25 .. 1.45. */
@@ -248,6 +250,7 @@ const RESTING: Features = {
   bpm: 0,
   dynamics: 0.3,
   silence: 1,
+  section: 0.15,
   sinceShift: 0,
   motion: 0.45,
   swell: 0.12,
@@ -289,6 +292,9 @@ export class Listener {
   };
   private shortLoud = 0;
   private longLoud = 0;
+  private phraseLoud = 0;
+  private sectionTop: number | null = null;
+  private sectionBottom = 0;
   private clock = 0;
   private shiftAt = 0;
   private ready = false;
@@ -532,6 +538,24 @@ export class Listener {
 
     const silence = smoothstep(0.004, 0.0008, rms);
 
+    // The section: phrase loudness in dB against the loudest and quietest of
+    // the last minute or so, seeded with a typical master's -20 dBFS.
+    this.phraseLoud = follow(this.phraseLoud, rms, dt, 0.6, 1.5);
+    let section = this.smoothed.section;
+    if (rms >= 0.0008) {
+      const level = 20 * Math.log10(Math.max(this.phraseLoud, 1e-5));
+      if (this.sectionTop === null) {
+        this.sectionTop = Math.max(level, -20);
+        this.sectionBottom = level - 10;
+      }
+      this.sectionTop = follow(this.sectionTop, level, dt, 0.5, 90);
+      this.sectionBottom = Math.max(follow(this.sectionBottom, level, dt, 30, 0.5), this.sectionTop - 30);
+      const span = Math.max(this.sectionTop - this.sectionBottom, 6);
+      section = clamp((level - (this.sectionTop - span)) / span);
+    } else {
+      section = 0;
+    }
+
     return {
       level,
       sub: this.gains.sub.push(raw.sub, dt),
@@ -552,8 +576,9 @@ export class Listener {
       bpm: this.tempo.confidence > 0.2 ? 60 / this.tempo.period : 0,
       dynamics,
       silence,
+      section,
       sinceShift: this.clock - this.shiftAt,
-      motion: this.motionRate(level, silence),
+      motion: this.motionRate(level, silence, section),
       swell: level,
       spectrum,
       spectrumSlow,
@@ -565,10 +590,11 @@ export class Listener {
    * not be animated at the same rate as a fast, loud one — this is what stops
    * the presets feeling nervous under music that is not.
    */
-  private motionRate(level: number, silence: number) {
+  private motionRate(level: number, silence: number, section: number) {
     const locked = this.tempo.confidence > 0.25;
     const tempoRate = locked ? clamp(60 / this.tempo.period / 118, 0.45, 1.5) : 0.55;
-    const energyRate = 0.32 + level * 0.85;
+    // The section too: level is auto-gained, so a long chorus reads like the verse.
+    const energyRate = 0.30 + level * 0.45 + section * 0.55;
     const rate = clamp(tempoRate * 0.5 + energyRate * 0.5, 0.20, 1.45);
     // Nothing audible: wind the clock almost all the way down.
     return rate * (0.10 + 0.90 * (1 - silence));
@@ -617,6 +643,7 @@ export class Listener {
       bpm: 0,
       dynamics: 0.46 + swell * 0.05,
       silence: 1,
+      section: 0.15,
       sinceShift: 0,
       motion: 0.12,
       swell: 0.05 + breath * 0.03,
@@ -652,6 +679,7 @@ export class Listener {
     // not over beats.
     s.swell = follow(s.swell, target.swell, dt, 1.4, 2.2);
     s.silence = follow(s.silence, target.silence, dt, 0.8, 0.4);
+    s.section = follow(s.section, target.section, dt, 1.0, 1.5);
     s.sinceShift = target.sinceShift;
 
     if (this.element) {

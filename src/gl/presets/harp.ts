@@ -64,10 +64,10 @@ vec3 scene(vec2 uv, vec2 st) {
   float top = exp(-(1.0 - height) * 22.0);
   float bottom = exp(-height * 22.0);
   col += world(0.46 + u_centroid * 0.28) * (top + bottom)
-    * (0.020 + u_level * 0.24 + u_pulse * 0.12);
+    * (0.020 + u_level * 0.24 + u_pulse * 0.12 + u_section * 0.10);
 
   // Air in the room, so the strings are not floating in a vacuum.
-  col += world(0.16) * fbm3(p * 1.8 + vec2(t * 0.008, -t * 0.005)) * (0.014 + u_air * 0.060);
+  col += world(0.16) * fbm3(p * 1.8 + vec2(t * 0.008, -t * 0.005)) * (0.014 + u_air * 0.060 + u_section * 0.020);
 
   return col;
 }`;

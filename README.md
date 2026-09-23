@@ -1,7 +1,7 @@
 # Serein for macOS
 
 A listening instrument, now built in **SwiftUI and Metal**. Give it music and it
-answers in light: seven effects, thirteen colour worlds, and a musical clock that
+answers in light: ten effects, thirteen colour worlds, and a musical clock that
 follows the sound. Audio analysis stays on your Mac.
 
 The native app uses AVAudioEngine, ScreenCaptureKit, Accelerate FFTs, and Metal.
@@ -69,10 +69,12 @@ worlds and tuning are available from the upper-right controls. At smaller window
 widths, effect navigation wraps into two balanced rows. `U` hides the controls
 and `T` independently hides the track information.
 
-## The original seven effects
+## The effects
 
-The original seven effects are ported from GLSL into Metal, retaining their
-geometry, audio mappings, tone mapping, grain, and transitions.
+Every effect is written once in GLSL, in `src/gl/presets/`, and ported to Metal
+by `scripts/port-metal.py` with its geometry, audio mappings, tone mapping,
+grain, and transitions intact. The first seven are the originals; Corona, Wick,
+and Boreal were added in the same language and by the same rules.
 
 | Effect | What it listens to |
 | --- | --- |
@@ -83,6 +85,9 @@ geometry, audio mappings, tone mapping, grain, and transitions.
 | Harp | Sixteen strings, struck and left to ring |
 | Fathom | Sunlight bent through the surface onto the seabed |
 | Quicksilver | Liquid metal standing up into the shape of the note |
+| Corona | An eclipse, its light streaming out on the wind |
+| Wick | One flame, the music rising through it as heat |
+| Boreal | Curtains of light folding away over a still lake |
 
 All thirteen colour worlds remain: Native, Ember, Glacier, Nocturne, Iris,
 Cinder, Peony, Verdigris, Absinthe, Tide, Copper, Bruise, and Aurora. Effects and
@@ -92,14 +97,15 @@ between launches.
 The tuning popover controls motion, response, grain, and resolution. Set motion
 to zero for a still composition whose light continues to follow the sound.
 macOS Reduce Motion starts motion at zero. Rendering is capped at 1.8 million
-pixels and adapts resolution to the frame budget on Retina displays. Hidden
-and minimized windows skip rendering.
+pixels, and resolution follows the GPU's measured frame time, stepping down
+when frames run long and back up when there is room. A window that is covered,
+minimised, hidden, or on another Space skips rendering entirely.
 
 ## Keyboard
 
 | Key | Action |
 | --- | --- |
-| `1`–`7` | Select an effect |
+| `1`–`9`, `0` | Select an effect |
 | `N` | Next effect |
 | `C` / `Shift C` | Next / previous colour world |
 | `L` / `O` | System audio / file |
@@ -129,6 +135,7 @@ native/Sources/Serein/
   AudioController.swift               System capture and file playback
   AudioAnalysis.swift                 FFT, bands, onsets, tempo, fast/slow spectra
   SpotifyController.swift             Optional Spotify desktop integration
+  FeatureStream.swift                 Frame-rate features, continuous across sources
   MetalRenderer.swift                 GPU rendering, transitions, pixel budget
   Resources/Effects.metal             Standalone Metal shader library
 native/Tests/                         Audio and GPU regression tests
@@ -136,19 +143,45 @@ scripts/build-macos.sh                Build and package a standalone app
 scripts/port-metal.py                 Refresh the Metal port from GLSL
 ```
 
-Three independent GPU upload slots prevent the CPU from mutating textures an
-in-flight frame is reading. The analyzer accumulates callbacks into 4,096-sample
-FFT windows with 50% overlap and publishes complete snapshots with separate fast
-and sustained spectra.
+Each effect compiles into its own pipeline, specialised on a Metal function
+constant, so it carries only its own code and register pressure; the packaged
+app ships them precompiled in `Effects.metallib` and builds the pipelines off
+the main thread. Three independent GPU upload slots prevent the CPU from
+mutating textures an in-flight frame is reading, and only the spectral-history
+rows recorded since a slot was last used are uploaded to it.
 
-`swift test` checks silence, known tones at 44.1/48/96 kHz, stereo downmix, file
-decoding, native pause/resume/replay, ScreenCaptureKit audio-buffer conversion,
-a 120 BPM pulse train, and all seven effects on a real Metal GPU under
-silence, resting, and active audio. GPU checks reject nonfinite and black output
-and require distinct frames from each effect. Save review PNGs with:
+The analyzer advances 512 samples at a time. Every hop it finds kick, snare,
+and hat onsets in a short 2,048-sample transform, from the rise in log
+magnitude in each band against a threshold that follows the band's own recent
+average; every fourth hop it measures levels, bands, and fast and sustained
+spectra in a 4,096-sample transform. It also measures the section: where the
+current passage sits in the song's own range over the last minute, so a chorus
+reads differently from a verse. Snapshots are published every 11 ms, and
+`FeatureStream` carries them to the 60 Hz frame: onsets decay every frame, the
+beat phase is extrapolated between snapshots, and a change of source or a pause
+dissolves over 0.8 seconds, with the beat counter running on continuously.
+
+`swift test` checks silence, known tones at 44.1/48/96 kHz, kick, snare, and hat
+detection in a drum pattern over sustained music, the section of a quiet
+passage against a loud one, stereo downmix, file decoding, native pause/resume/replay, playback across an output-device change,
+ScreenCaptureKit audio-buffer conversion, a 120 BPM pulse train and the beat
+phase locking onto it, continuity across a change of source, and all ten
+effects on a real Metal GPU under silence, resting, and active audio. GPU checks
+reject nonfinite and black output and require distinct frames from each effect.
+Save review PNGs with:
 
 ```sh
 SEREIN_RENDER_DIR=/tmp/serein-renders swift test
+```
+
+Two opt-in tools help with effect work. The benchmark reports each effect's GPU
+time at the full pixel budget; the review harness decodes a real track, runs it
+through the real analyzer at 60 frames a second, and writes contact sheets,
+beat-response pairs, and brightness, flicker, and beat-counter measurements:
+
+```sh
+SEREIN_BENCH=1 swift test --filter RenderBenchmark
+SEREIN_REVIEW=/tmp/review SEREIN_AUDIO=song.mp3 swift test --filter ReviewHarness
 ```
 
 ## Browser reference

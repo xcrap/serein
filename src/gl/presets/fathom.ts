@@ -184,7 +184,9 @@ vec3 scene(vec2 uv, vec2 st) {
 
   // How much sun is getting down here at all: the phrase-scale response, and
   // the largest thing in the frame. Near nothing when nothing is playing.
-  float reach = 0.06 + u_swell * 0.74 + u_dynamics * 0.18;
+  // A little light always gets down, so a quiet passage is dim water and not
+  // black; the swell and the passage open it, and never into a wash.
+  float reach = 0.14 + u_swell * 0.36 + u_dynamics * 0.10 + u_section * 0.26;
 
   if (tFloor < 44.0) {
     vec3 hit = ro + rd * tFloor;
@@ -213,9 +215,9 @@ vec3 scene(vec2 uv, vec2 st) {
     // And the light that reached it. Brighter light is bent further, so the
     // strongest parts of the net sit higher up the ramp than its edges.
     col += world(0.70 + clamp(c, 0.0, 1.0) * 0.28) * c * haze
-         * (0.22 + pool * 1.15)
-         * (0.03 + litHere * 0.60 + u_level * 0.22
-            );
+         * (0.45 + pool * 1.00)
+         // A base the quiet passages keep, so the net is always faintly there.
+         * (0.10 + litHere * 0.50 + u_level * 0.18 + u_section * 0.10);
   }
 
   // Everything above the bed: open water, brighter toward the surface.
@@ -240,7 +242,18 @@ vec3 scene(vec2 uv, vec2 st) {
     shafts += world(0.42 + bd * 0.34) * v * (0.07 + specSpread(bd) * 0.55 + spec(bd) * 0.22);
   }
   shafts /= float(STEPS);
-  col += shafts * (0.10 + reach * 1.05 + u_level * 0.45);
+  // The shafts are haze: generous, they fill the whole volume and the frame
+  // washes out on every hit.
+  col += shafts * (0.08 + reach * 0.70 + u_level * 0.28);
+
+  // Suspended matter, catching the light where the shafts are. The hats are
+  // only ever this.
+  vec2 grid = uv * 38.0 + vec2(t * 0.6, -t * 0.25);
+  vec2 id = floor(grid);
+  vec2 k = hash22(id + 31.0);
+  float mote = smoothstep(0.12, 0.0, length(fract(grid) - 0.5 - (k - 0.5) * 0.6)) * step(0.86, k.x);
+  float inLight = clamp(dot(shafts, vec3(0.33)) * 6.0, 0.0, 1.0);
+  col += world(0.88) * mote * inLight * (0.06 + u_hat * 0.70 + u_section * 0.10);
 
   return col;
 }`;

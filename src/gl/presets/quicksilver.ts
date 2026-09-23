@@ -111,8 +111,10 @@ vec3 crown(vec2 p, float amount) {
 vec3 room(vec3 d) {
   vec3 lamp = normalize(vec3(0.46, 0.26, 1.0));
   float c = max(dot(normalize(d), lamp), 0.0);
-  vec3 col = world(0.99) * spow(c, 2600.0) * (4.0 + u_level * 7.0 + u_pulse * 2.0 + power() * 4.0);
-  col += world(0.78 + u_centroid * 0.18) * spow(c, 110.0) * (0.40 + u_level * 1.10);
+  // The lamp burns brighter in the full passages of a song and dims in the
+  // quiet ones, so the glitter path opens and closes across its sections.
+  vec3 col = world(0.99) * spow(c, 2600.0) * (4.0 + u_level * 7.0 + u_pulse * 2.0 + power() * 4.0) * (0.45 + u_section * 0.65);
+  col += world(0.78 + u_centroid * 0.18) * spow(c, 110.0) * (0.40 + u_level * 1.10 + u_section * 0.60);
   col += world(0.44 + u_centroid * 0.20) * spow(c, 16.0) * (0.020 + u_air * 0.09);
   // A soft ambient the whole sheet can reflect, so the lattice is legible
   // right across the frame and not only inside the glitter.
@@ -153,7 +155,8 @@ vec3 scene(vec2 uv, vec2 st) {
   // On the moments with power in them the sheet is driven harder: the facets
   // tilt further, so the glitter path opens out across the frame.
   float pw = power();
-  float amp = (0.036 + u_level * 0.145 + u_swell * 0.075 + pw * 0.075) * pump * near;
+  float amp = (0.036 + u_level * 0.145 + u_swell * 0.075 + pw * 0.075 + u_section * 0.050) * pump * near
+            * (0.50 + u_section * 0.75);
 
   vec3 lat = sea(p, t, band, pump);
   vec3 ring = crown(p, 0.010 + u_kick * 0.030) * near;
